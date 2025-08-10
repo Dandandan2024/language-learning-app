@@ -3,12 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "apps",
+    "packages/*",
+    "infra/prisma"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace=apps/web",
-    "build": "npm run build --workspace=apps/web",
+    "dev": "npm --workspace=apps run dev",
+    "build": "npm --workspace=apps run build",
     "worker": "npm run dev --workspace=apps/worker",
     "db:generate": "npm run db:generate --workspace=infra/prisma",
     "db:push": "npm run db:push --workspace=infra/prisma",

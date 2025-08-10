@@ -1,0 +1,17 @@
+{
+  "name": "apps",
+  "private": true,
+  "workspaces": [
+    "web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=web",
+    "build": "npm run build --workspace=web",
+    "start": "npm run start --workspace=web"
+  },
+  "dependencies": {
+    "next": "15.4.6"
+  }
+}
+
+
