@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace=apps/web",
-    "build": "npm run build --workspace=apps/web",
+    "build": "npm run -w packages/core build && npm run build --workspace=apps/web",
     "start": "npm run start --workspace=apps/web",
     "worker": "npm run dev --workspace=apps/worker",
     "db:generate": "npm run db:generate --workspace=infra/prisma",
