@@ -4,7 +4,6 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install --legacy-peer-deps",
   "framework": null,
-  "nodeVersion": "20.x",
   "env": {
     "DATABASE_URL": "@database_url",
     "NEXTAUTH_URL": "@nextauth_url",
