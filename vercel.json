@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build:vercel",
+  "buildCommand": "cd packages/core && npm run build && cd ../.. && cd apps/web && npm install && npm run build",
   "outputDirectory": "apps/web/.next",
   "devCommand": "npm run dev",
   "installCommand": "npm install --legacy-peer-deps",
