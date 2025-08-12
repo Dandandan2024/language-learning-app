@@ -1,5 +1,0 @@
-{
-  "rootDirectory": "apps/web",
-  "buildCommand": "cd ../../packages/core && npm install && npm run build && cd ../../apps/web && npm run build",
-  "installCommand": "cd ../../ && npm install --legacy-peer-deps && cd apps/web && npm install --legacy-peer-deps"
-}
