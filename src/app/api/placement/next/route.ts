@@ -43,24 +43,32 @@ export async function GET(request: NextRequest) {
     const difficulty = getDifficultyForTheta(pick(placementState));
 
     // Find a suitable lexeme for this difficulty level
-    const lexeme = await prisma.lexeme.findFirst({
+    // Prefer matching CEFR, but fall back to any seed sentence if none exists
+    let lexeme = await prisma.lexeme.findFirst({
       where: {
         cefr: difficulty.cefr,
-        freqRank: {
-          gte: difficulty.minFreqRank,
-          lte: difficulty.maxFreqRank
-        }
       },
       include: {
         sentences: {
           where: {
-            source: "seed", // Use pre-curated sentences for placement
-            cefr: difficulty.cefr
+            source: "seed",
+            cefr: difficulty.cefr,
           },
-          take: 1
-        }
-      }
+          take: 1,
+        },
+      },
     });
+
+    if (!lexeme || lexeme.sentences.length === 0) {
+      lexeme = await prisma.lexeme.findFirst({
+        include: {
+          sentences: {
+            where: { source: "seed" },
+            take: 1,
+          },
+        },
+      });
+    }
 
     if (!lexeme || lexeme.sentences.length === 0) {
       return NextResponse.json(

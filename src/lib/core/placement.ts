@@ -99,15 +99,14 @@ export function getDifficultyForTheta(theta: number): {
 } {
   const cefr = thetaToCEFR(theta);
   
-  // Rough frequency rank ranges for each CEFR level
-  // These would be refined based on actual lexeme data
+  // Use broad ranges to ensure we find content even with minimal seed data
   const rankRanges: Record<CEFR, { min: number; max: number }> = {
-    "A1": { min: 1, max: 1000 },
-    "A2": { min: 500, max: 2000 },
-    "B1": { min: 1500, max: 3500 },
-    "B2": { min: 3000, max: 6000 },
-    "C1": { min: 5000, max: 10000 },
-    "C2": { min: 8000, max: 15000 }
+    "A1": { min: 1, max: 1000000 },
+    "A2": { min: 1, max: 1000000 },
+    "B1": { min: 1, max: 1000000 },
+    "B2": { min: 1, max: 1000000 },
+    "C1": { min: 1, max: 1000000 },
+    "C2": { min: 1, max: 1000000 }
   };
   
   const range = rankRanges[cefr];
