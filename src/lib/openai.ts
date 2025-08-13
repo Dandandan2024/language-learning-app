@@ -1,9 +1,17 @@
 import OpenAI from 'openai';
 import { SentenceGeneration } from './core/schemas';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let openaiClient: OpenAI | null = null;
+
+function getOpenAI(): OpenAI {
+  if (openaiClient) return openaiClient;
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY is required to generate sentences');
+  }
+  openaiClient = new OpenAI({ apiKey });
+  return openaiClient;
+}
 
 export interface GenerateSentenceRequest {
   lexeme: string;
@@ -45,7 +53,7 @@ Return the response as a JSON object with these exact fields:
 }`;
 
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
