@@ -9,7 +9,11 @@ export function start(): PlacementState {
   return {
     theta: 0,    // Start at ~B1 mid-level
     step: 1.0,   // Initial step size
-    n: 0         // Number of responses
+    n: 0,        // Number of responses
+    seenLexemeIds: [],
+    history: [],
+    lower: -2.5,
+    upper: 2.5
   };
 }
 
@@ -19,24 +23,46 @@ export function pick(state: { theta: number }): number {
 }
 
 export function update(
-  state: { theta: number; step: number; n: number }, 
-  outcome: Outcome
+  state: { theta: number; step: number; n: number; lower?: number; upper?: number }, 
+  outcome: Outcome,
+  itemDifficultyTheta?: number
 ): PlacementState {
-  // Update theta based on outcome
-  const theta = state.theta + (outcome === 'easy' ? state.step : -state.step);
+  // If we have item difficulty, move toward it with sign; otherwise fallback
+  const direction = outcome === 'easy' ? 1 : -1;
+  const target = typeof itemDifficultyTheta === 'number' ? itemDifficultyTheta : state.theta;
+
+  // Proposed new theta with conservative move: bias toward target but limit by step
+  const delta = direction * state.step;
+  let theta = state.theta + delta;
+
+  // Clamp within dynamic ability bounds
+  const lower = state.lower ?? -2.5;
+  const upper = state.upper ?? 2.5;
+  theta = Math.max(lower, Math.min(upper, theta));
   
   // Increment response count
   const n = state.n + 1;
   
   // Halve step size every 2 responses
   const step = n % 2 === 0 ? state.step * 0.5 : state.step;
+
+  // Update bounds: for 'easy', user ability is likely >= item difficulty; for 'hard', <= item difficulty
+  let newLower = lower;
+  let newUpper = upper;
+  if (typeof itemDifficultyTheta === 'number') {
+    if (outcome === 'easy') newLower = Math.max(newLower, itemDifficultyTheta);
+    else newUpper = Math.min(newUpper, itemDifficultyTheta);
+
+    // Ensure theta stays within refined bounds
+    theta = Math.max(newLower, Math.min(newUpper, theta));
+  }
   
-  return { theta, step, n };
+  return { theta, step, n, lower: newLower, upper: newUpper } as PlacementState;
 }
 
 export function shouldStop(state: { step: number; n: number }): boolean {
-  // Stop when: (a) at least 8 items and step <= 0.25, or (b) 12 items
-  return (state.n >= 8 && state.step <= 0.25) || state.n >= 12;
+  // Stop when: (a) at least 10 items and step <= 0.2, or (b) 15 items
+  return (state.n >= 10 && state.step <= 0.2) || state.n >= 15;
 }
 
 /**
@@ -116,4 +142,64 @@ export function getDifficultyForTheta(theta: number): {
     minFreqRank: range.min,
     maxFreqRank: range.max
   };
+}
+
+// Approximate mapping from frequency rank to difficulty on theta scale (-3..+3)
+function rankToDifficultyTheta(freqRank: number): number {
+  const Rmax = 50000; // assume 50k ranks coverage
+  const r = Math.max(1, Math.min(Rmax, freqRank));
+  const normalized = Math.log(r) / Math.log(Rmax); // 0..1
+  return -3 + 6 * normalized; // maps to [-3, +3]
+}
+
+export function cefrToTheta(cefr: CEFR): number {
+  switch (cefr) {
+    case 'A1': return -2.3;
+    case 'A2': return -1.3;
+    case 'B1': return 0.0;
+    case 'B2': return 1.0;
+    case 'C1': return 2.0;
+    case 'C2': return 2.6;
+  }
+}
+
+// Compute knowledge profile bands using theta and step as uncertainty
+export function getKnowledgeProfile(state: PlacementState): {
+  thetaMean: number;
+  thetaMargin: number;
+  bands: { rangeStartRank: number; rangeEndRank: number; cefr?: CEFR; pKnownMean: number; pKnownLow: number; pKnownHigh: number; }[]
+} {
+  const thetaMean = state.theta;
+  const thetaLow = state.theta - state.step;
+  const thetaHigh = state.theta + state.step;
+
+  const bands: Array<{ rangeStartRank: number; rangeEndRank: number; cefr?: CEFR; } > = [
+    { rangeStartRank: 1, rangeEndRank: 1000, cefr: "A1" },
+    { rangeStartRank: 1001, rangeEndRank: 3000, cefr: "A2" },
+    { rangeStartRank: 3001, rangeEndRank: 6000, cefr: "B1" },
+    { rangeStartRank: 6001, rangeEndRank: 10000, cefr: "B2" },
+    { rangeStartRank: 10001, rangeEndRank: 20000, cefr: "C1" },
+    { rangeStartRank: 20001, rangeEndRank: Number.MAX_SAFE_INTEGER, cefr: "C2" },
+  ];
+
+  const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
+
+  const prof = bands.map(b => {
+    // Use the midpoint of the rank band to approximate band difficulty
+    const midRank = Math.floor((b.rangeStartRank + Math.min(b.rangeEndRank, 2 * b.rangeStartRank)) / 2);
+    const diff = rankToDifficultyTheta(midRank);
+    const pMean = sigmoid(thetaMean - diff);
+    const pLow = sigmoid(thetaLow - diff);
+    const pHigh = sigmoid(thetaHigh - diff);
+    return {
+      rangeStartRank: b.rangeStartRank,
+      rangeEndRank: b.rangeEndRank,
+      cefr: b.cefr,
+      pKnownMean: Number(pMean.toFixed(3)),
+      pKnownLow: Number(pLow.toFixed(3)),
+      pKnownHigh: Number(pHigh.toFixed(3)),
+    };
+  });
+
+  return { thetaMean, thetaMargin: state.step, bands: prof };
 }

@@ -10,6 +10,7 @@ import {
   PlacementItem 
 } from "@/lib/core";
 import { generateSentence } from "@/lib/openai";
+import { generateUniqueHash } from "@/lib/core";
 
 export async function GET(request: NextRequest) {
   try {
@@ -48,76 +49,87 @@ export async function GET(request: NextRequest) {
     // Get difficulty parameters for current theta
     const difficulty = getDifficultyForTheta(pick(placementState));
 
-    // Find a suitable lexeme for this difficulty level
-    // We'll use a simple approach: pick from a predefined set of common words
-    // In a production app, you might want to use a more sophisticated algorithm
-    const commonWords = [
-      { lemma: 'hello', pos: 'interjection', cefr: 'A1' },
-      { lemma: 'good', pos: 'adjective', cefr: 'A1' },
-      { lemma: 'water', pos: 'noun', cefr: 'A1' },
-      { lemma: 'eat', pos: 'verb', cefr: 'A1' },
-      { lemma: 'house', pos: 'noun', cefr: 'A1' },
-      { lemma: 'because', pos: 'conjunction', cefr: 'A2' },
-      { lemma: 'understand', pos: 'verb', cefr: 'A2' },
-      { lemma: 'friend', pos: 'noun', cefr: 'A2' },
-      { lemma: 'important', pos: 'adjective', cefr: 'A2' },
-      { lemma: 'suggest', pos: 'verb', cefr: 'B1' },
-      { lemma: 'opinion', pos: 'noun', cefr: 'B1' },
-      { lemma: 'probably', pos: 'adverb', cefr: 'B1' },
-      { lemma: 'experience', pos: 'noun', cefr: 'B1' },
-      { lemma: 'despite', pos: 'preposition', cefr: 'B2' },
-      { lemma: 'achieve', pos: 'verb', cefr: 'B2' },
-      { lemma: 'significant', pos: 'adjective', cefr: 'B2' },
-      { lemma: 'nevertheless', pos: 'adverb', cefr: 'C1' },
-      { lemma: 'contemplate', pos: 'verb', cefr: 'C1' },
-    ];
+    // Avoid duplicates by excluding seen lexeme ids from this user session
+    const seen: string[] = Array.isArray(placementState?.seenLexemeIds) ? placementState.seenLexemeIds : [];
 
-    // Pick a word that matches the target CEFR level, or fall back to any word
-    let selectedWord = commonWords.find(word => word.cefr === difficulty.cefr);
-    if (!selectedWord) {
-      // Fall back to a word from the same general level
-      const levelGroups = {
-        'A1': ['A1'],
-        'A2': ['A1', 'A2'],
-        'B1': ['A2', 'B1'],
-        'B2': ['B1', 'B2'],
-        'C1': ['B2', 'C1'],
-        'C2': ['C1', 'C2']
-      };
-      const allowedLevels = levelGroups[difficulty.cefr] || ['A1', 'A2', 'B1'];
-      selectedWord = commonWords.find(word => allowedLevels.includes(word.cefr)) || commonWords[0];
+    // Prefer lexemes within the current difficulty CEFR band, excluding seen ones
+    let candidate = await prisma.lexeme.findFirst({
+      where: {
+        cefr: difficulty.cefr,
+        id: { notIn: seen }
+      },
+      orderBy: { freqRank: 'asc' }
+    });
+
+    // Fallback: any lexeme not seen yet
+    if (!candidate) {
+      candidate = await prisma.lexeme.findFirst({
+        where: { id: { notIn: seen } },
+        orderBy: { freqRank: 'asc' }
+      });
     }
 
-    if (!selectedWord) {
+    if (!candidate) {
       return NextResponse.json(
         { error: "No suitable content found" }, 
         { status: 404 }
       );
     }
 
-    // Generate a sentence using OpenAI
-    const generatedSentence = await generateSentence({
-      lexeme: selectedWord.lemma,
-      pos: selectedWord.pos,
-      cefr: difficulty.cefr,
-      targetLanguage: userLanguage,
-      nativeLanguage: nativeLanguage
+    // Find or generate a sentence for this lexeme
+    let sentence = await prisma.sentence.findFirst({
+      where: { targetLexemeId: candidate.id },
+      orderBy: { createdAt: 'desc' }
     });
 
-    // Create a temporary lexeme ID for the placement (we don't need to store this)
-    const tempLexemeId = `placement-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    if (!sentence) {
+      try {
+        const generated = await generateSentence({
+          lexeme: candidate.lemma,
+          pos: candidate.pos || undefined,
+          cefr: difficulty.cefr as any,
+          targetLanguage: userLanguage,
+          nativeLanguage: nativeLanguage
+        });
+        const uniqueHash = generateUniqueHash(`${candidate.id}-${generated.sentence_l2}`);
+        sentence = await prisma.sentence.create({
+          data: {
+            targetLexemeId: candidate.id,
+            textL2: generated.sentence_l2,
+            textL1: generated.sentence_l1,
+            cefr: generated.cefr,
+            difficulty: 0.4,
+            tokens: generated.sentence_l2.toLowerCase().split(' '),
+            source: 'llm',
+            targetForm: generated.target_form || undefined,
+            uniqueHash,
+          }
+        });
+      } catch (err) {
+        return NextResponse.json(
+          { error: "Failed to generate content" },
+          { status: 502 }
+        );
+      }
+    }
 
     const response: PlacementItem = {
-      lexemeId: tempLexemeId,
+      lexemeId: candidate.id,
       sentence: {
-        textL2: generatedSentence.sentence_l2,
-        textL1: generatedSentence.sentence_l1,
-        cefr: generatedSentence.cefr,
-        targetForm: generatedSentence.target_form
+        textL2: sentence.textL2,
+        textL1: sentence.textL1,
+        cefr: sentence.cefr as any,
+        targetForm: sentence.targetForm || undefined
+      },
+      lexeme: {
+        lemma: candidate.lemma,
+        pos: candidate.pos || undefined,
+        cefr: candidate.cefr as any,
+        freqRank: candidate.freqRank
       },
       meta: {
         idx: placementState.n + 1,
-        total: 12, // Maximum possible items
+        total: 15, // Maximum possible items
         theta: placementState.theta,
         delta: placementState.step
       }

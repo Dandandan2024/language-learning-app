@@ -9,7 +9,8 @@ import {
   shouldStop,
   generateLevelEstimate,
   PlacementAnswerSchema,
-  generateUniqueHash
+  generateUniqueHash,
+  getKnowledgeProfile
 } from "@/lib/core";
 import { generateSentence } from "@/lib/openai";
 
@@ -55,8 +56,26 @@ export async function POST(request: NextRequest) {
     const settings = (user?.settings as any) || {};
     const placementState = settings.placementState || start();
 
+    // Determine item difficulty theta if lexeme is found
+    const lexeme = await prisma.lexeme.findUnique({ where: { id: lexemeId } });
+    const itemDifficultyTheta = lexeme ? (typeof lexeme.freqRank === 'number' ? ((): number => {
+      // inline mapping to avoid extra import: log-scaled rank to [-3, +3]
+      const Rmax = 50000; const r = Math.max(1, Math.min(Rmax, lexeme.freqRank));
+      const normalized = Math.log(r) / Math.log(Rmax); return -3 + 6 * normalized;
+    })() : 0) : 0;
+
     // Update placement state with the user's response
-    const newState = update(placementState, outcome);
+    const newState = update(placementState, outcome, itemDifficultyTheta);
+
+    // Track seen lexemes and history for profiling
+    const seenLexemeIds: string[] = Array.isArray(placementState.seenLexemeIds) ? placementState.seenLexemeIds.slice() : [];
+    const history = Array.isArray(placementState.history) ? placementState.history.slice() : [];
+
+    // Enrich history entry with lexeme details
+    if (lexeme) {
+      if (!seenLexemeIds.includes(lexemeId)) seenLexemeIds.push(lexemeId);
+      history.push({ lexemeId, outcome, cefr: (lexeme.cefr as any), freqRank: lexeme.freqRank, difficultyTheta: itemDifficultyTheta });
+    }
 
     // Check if we should stop the placement test
     const finished = shouldStop(newState);
@@ -75,13 +94,17 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      // Clear placement state from user settings
+      // Compute and store knowledge profile in settings
+      const knowledgeProfile = getKnowledgeProfile({ ...newState, seenLexemeIds, history });
+
+      // Clear placement state from user settings, persist knowledge profile
       await prisma.user.update({
         where: { id: userId },
         data: {
           settings: {
             ...settings,
-            placementState: undefined
+            placementState: undefined,
+            knowledgeProfile
           }
         }
       });
@@ -200,7 +223,7 @@ export async function POST(request: NextRequest) {
         data: {
           settings: {
             ...settings,
-            placementState: newState
+            placementState: { ...newState, seenLexemeIds, history }
           }
         }
       });

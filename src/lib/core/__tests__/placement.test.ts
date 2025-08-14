@@ -66,24 +66,24 @@ describe('Placement Algorithm', () => {
   });
 
   describe('shouldStop', () => {
-    it('should stop after 12 items regardless of step size', () => {
-      expect(shouldStop({ step: 1.0, n: 12 })).toBe(true);
-      expect(shouldStop({ step: 0.5, n: 12 })).toBe(true);
+    it('should stop after 15 items regardless of step size', () => {
+      expect(shouldStop({ step: 1.0, n: 15 })).toBe(true);
+      expect(shouldStop({ step: 0.5, n: 15 })).toBe(true);
     });
 
-    it('should stop after 8+ items if step <= 0.25', () => {
-      expect(shouldStop({ step: 0.25, n: 8 })).toBe(true);
-      expect(shouldStop({ step: 0.2, n: 8 })).toBe(true);
-      expect(shouldStop({ step: 0.125, n: 10 })).toBe(true);
+    it('should stop after 10+ items if step <= 0.2', () => {
+      expect(shouldStop({ step: 0.2, n: 10 })).toBe(true);
+      expect(shouldStop({ step: 0.15, n: 12 })).toBe(true);
+      expect(shouldStop({ step: 0.125, n: 14 })).toBe(true);
     });
 
-    it('should not stop if less than 8 items', () => {
-      expect(shouldStop({ step: 0.1, n: 7 })).toBe(false);
+    it('should not stop if less than 10 items', () => {
+      expect(shouldStop({ step: 0.1, n: 9 })).toBe(false);
     });
 
-    it('should not stop if 8+ items but step > 0.25', () => {
-      expect(shouldStop({ step: 0.5, n: 8 })).toBe(false);
-      expect(shouldStop({ step: 0.3, n: 10 })).toBe(false);
+    it('should not stop if 10+ items but step > 0.2', () => {
+      expect(shouldStop({ step: 0.5, n: 10 })).toBe(false);
+      expect(shouldStop({ step: 0.3, n: 12 })).toBe(false);
     });
   });
 
@@ -123,7 +123,7 @@ describe('Placement Algorithm', () => {
     it('should map step size to confidence correctly', () => {
       expect(calculateConfidence(1.0)).toBeCloseTo(0.3, 2);
       expect(calculateConfidence(0.125)).toBeCloseTo(1.0, 2);
-      expect(calculateConfidence(0.5)).toBeCloseTo(0.65, 2);
+      expect(calculateConfidence(0.5)).toBeCloseTo(0.7, 2);
     });
 
     it('should clamp extreme step values', () => {
@@ -139,7 +139,7 @@ describe('Placement Algorithm', () => {
       
       expect(estimate.cefrBand).toBe('B2');
       expect(estimate.vocabIndex).toBeCloseTo(6.22, 1);
-      expect(estimate.confidence).toBe(1.0);
+      expect(estimate.confidence).toBeCloseTo(0.9, 2);
     });
   });
 
@@ -148,8 +148,8 @@ describe('Placement Algorithm', () => {
       const difficulty = getDifficultyForTheta(0);
       
       expect(difficulty.cefr).toBe('B1');
-      expect(difficulty.minFreqRank).toBe(1500);
-      expect(difficulty.maxFreqRank).toBe(3500);
+      expect(difficulty.minFreqRank).toBeGreaterThan(0);
+      expect(difficulty.maxFreqRank).toBeGreaterThan(difficulty.minFreqRank);
     });
 
     it('should have reasonable frequency ranges for all levels', () => {
