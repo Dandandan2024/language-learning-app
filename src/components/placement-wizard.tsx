@@ -52,13 +52,27 @@ export function PlacementWizard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          outcome,
-          lexemeId: currentItem.lexemeId
+          outcome
         })
       });
       
       if (!response.ok) {
-        throw new Error('Failed to submit answer');
+        // Try to extract server error message
+        let message = 'Failed to submit answer';
+        try {
+          const data = await response.json();
+          if (data?.error) message = data.error;
+        } catch {}
+        
+        if (response.status === 401) {
+          message = 'Please sign in to continue';
+        }
+        if (response.status === 409) {
+          // Placement is done or blocked; route to study
+          router.push('/study');
+          return;
+        }
+        throw new Error(message);
       }
       
       const result = await response.json();
