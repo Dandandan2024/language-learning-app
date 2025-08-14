@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
         pos: dueLexemeState.lexeme.pos || undefined
       },
       state: {
-        due: dueLexemeState.due,
+        due: dueLexemeState.due.toISOString(),
         stability: dueLexemeState.stability,
         difficulty: dueLexemeState.difficulty
       }

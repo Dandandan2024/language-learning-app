@@ -272,7 +272,7 @@ export function StudyInterface() {
           {/* Card Stats */}
           <div className="text-xs text-gray-400 text-center space-y-1">
             <p>Difficulty: {currentCard.state.difficulty.toFixed(1)} | Stability: {currentCard.state.stability.toFixed(1)} days</p>
-            <p>Due: {currentCard.state.due.toLocaleDateString()}</p>
+            <p>Due: {new Date(currentCard.state.due as unknown as string).toLocaleDateString()}</p>
           </div>
         </CardContent>
       </Card>

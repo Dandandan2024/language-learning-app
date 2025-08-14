@@ -58,7 +58,7 @@ export interface StudyCard {
     pos?: string;
   };
   state: {
-    due: Date;
+    due: string; // ISO date string from API
     stability: number;
     difficulty: number;
   };
