@@ -36,12 +36,17 @@ CEFR level guidelines:
 - C1: Complex text with implicit meaning
 - C2: Very complex text, understanding virtually everything
 
-Requirements:
-- The sentence must be natural and appropriate for the CEFR level
-- Include the target word "${lexeme}" in a natural context
-- Make it suitable for language learning
-- Keep it under 160 characters for the target language
-- Provide a clear translation in ${nativeLanguage}
+Strict constraints:
+- Use a single, simple sentence (one independent clause). Avoid commas and semicolons.
+- Use only very common, everyday words at the learner's level. Avoid rare/academic/idiomatic words.
+- Prefer present tense and simple aspect unless the target word requires otherwise.
+- Keep the sentence short for the specified level:
+  • A1–A2: ≤ 9 words and ≤ 70 characters
+  • B1: ≤ 12 words and ≤ 90 characters
+  • B2: ≤ 15 words and ≤ 110 characters
+  • C1–C2: ≤ 18 words and ≤ 130 characters
+- The sentence must still include "${lexeme}" naturally.
+- Provide a concise translation in ${nativeLanguage}.
 
 Return the response as a JSON object with these exact fields:
 {
@@ -58,15 +63,15 @@ Return the response as a JSON object with these exact fields:
       messages: [
         {
           role: "system",
-          content: "You are a language learning expert. Generate natural, level-appropriate sentences for language learners. Always respond with valid JSON."
+          content: "You are a language learning expert. Generate natural, level-appropriate sentences for language learners. Always respond with valid JSON. Prefer short, simple sentences and high-frequency vocabulary appropriate to the specified CEFR level."
         },
         {
           role: "user",
           content: prompt
         }
       ],
-      temperature: 0.7,
-      max_tokens: 300,
+      temperature: 0.4,
+      max_tokens: 200,
     });
 
     const content = completion.choices[0]?.message?.content;
