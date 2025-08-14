@@ -52,7 +52,8 @@ export function PlacementWizard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          outcome
+          outcome,
+          lexemeId: currentItem.lexemeId
         })
       });
       

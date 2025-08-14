@@ -18,7 +18,7 @@ export type SentenceGeneration = z.infer<typeof SentenceSchema>;
 // API request/response schemas
 export const PlacementAnswerSchema = z.object({
   outcome: z.enum(["easy", "hard"]),
-  lexemeId: z.string().min(1).optional()
+  lexemeId: z.string().min(1)
 });
 
 export const StudyReviewSchema = z.object({

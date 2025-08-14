@@ -21,6 +21,15 @@ export interface PlacementState {
   theta: number;  // -3..+3
   step: number;   // step size
   n: number;      // number of responses
+  // Track which lexemes have been shown during placement to avoid duplicates
+  seenLexemeIds?: string[];
+  // Keep a lightweight history of outcomes for later profiling
+  history?: Array<{
+    lexemeId: string;
+    outcome: Outcome;
+    cefr: CEFR;
+    freqRank?: number;
+  }>;
 }
 
 export interface LevelEstimate {
@@ -36,6 +45,13 @@ export interface PlacementItem {
     textL1: string;
     cefr: CEFR;
     targetForm?: string;
+  };
+  // Optional lexeme information for client display/telemetry
+  lexeme?: {
+    lemma: string;
+    pos?: string;
+    cefr?: CEFR;
+    freqRank?: number;
   };
   meta: {
     idx: number;
@@ -62,4 +78,20 @@ export interface StudyCard {
     stability: number;
     difficulty: number;
   };
+}
+
+// Knowledge profile derived from placement
+export interface KnowledgeBand {
+  rangeStartRank: number;
+  rangeEndRank: number; // use Number.MAX_SAFE_INTEGER to indicate open-ended
+  cefr?: CEFR;
+  pKnownMean: number; // 0..1
+  pKnownLow: number;  // 0..1 lower bound
+  pKnownHigh: number; // 0..1 upper bound
+}
+
+export interface KnowledgeProfile {
+  thetaMean: number;   // placement theta
+  thetaMargin: number; // uncertainty approx (use step)
+  bands: KnowledgeBand[];
 }

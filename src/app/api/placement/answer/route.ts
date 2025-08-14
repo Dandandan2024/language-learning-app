@@ -9,7 +9,8 @@ import {
   shouldStop,
   generateLevelEstimate,
   PlacementAnswerSchema,
-  generateUniqueHash
+  generateUniqueHash,
+  getKnowledgeProfile
 } from "@/lib/core";
 import { generateSentence } from "@/lib/openai";
 
@@ -58,6 +59,17 @@ export async function POST(request: NextRequest) {
     // Update placement state with the user's response
     const newState = update(placementState, outcome);
 
+    // Track seen lexemes and history for profiling
+    const seenLexemeIds: string[] = Array.isArray(placementState.seenLexemeIds) ? placementState.seenLexemeIds.slice() : [];
+    const history = Array.isArray(placementState.history) ? placementState.history.slice() : [];
+
+    // Enrich history entry with lexeme details
+    const lexeme = await prisma.lexeme.findUnique({ where: { id: lexemeId } });
+    if (lexeme) {
+      if (!seenLexemeIds.includes(lexemeId)) seenLexemeIds.push(lexemeId);
+      history.push({ lexemeId, outcome, cefr: (lexeme.cefr as any), freqRank: lexeme.freqRank });
+    }
+
     // Check if we should stop the placement test
     const finished = shouldStop(newState);
 
@@ -75,13 +87,17 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      // Clear placement state from user settings
+      // Compute and store knowledge profile in settings
+      const knowledgeProfile = getKnowledgeProfile({ ...newState, seenLexemeIds, history });
+
+      // Clear placement state from user settings, persist knowledge profile
       await prisma.user.update({
         where: { id: userId },
         data: {
           settings: {
             ...settings,
-            placementState: undefined
+            placementState: undefined,
+            knowledgeProfile
           }
         }
       });
@@ -200,7 +216,7 @@ export async function POST(request: NextRequest) {
         data: {
           settings: {
             ...settings,
-            placementState: newState
+            placementState: { ...newState, seenLexemeIds, history }
           }
         }
       });
