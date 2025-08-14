@@ -10,6 +10,7 @@ import {
   PlacementItem 
 } from "@/lib/core";
 import { generateSentence } from "@/lib/openai";
+import { codeToLanguageName } from "@/lib/languages";
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,8 +43,11 @@ export async function GET(request: NextRequest) {
     const placementState = settings?.placementState || start();
     
     // Get user language preferences, with defaults
-    const userLanguage = settings?.language || 'ru';
-    const nativeLanguage = settings?.nativeLanguage || 'en';
+    const userLanguageCode = settings?.language || 'ru';
+    const nativeLanguageCode = settings?.nativeLanguage || 'en';
+
+    const targetLanguage = codeToLanguageName(userLanguageCode);
+    const nativeLanguage = codeToLanguageName(nativeLanguageCode);
 
     // Get difficulty parameters for current theta
     const difficulty = getDifficultyForTheta(pick(placementState));
@@ -100,7 +104,7 @@ export async function GET(request: NextRequest) {
       lexeme: selectedWord.lemma,
       pos: selectedWord.pos,
       cefr: difficulty.cefr,
-      targetLanguage: userLanguage,
+      targetLanguage: targetLanguage,
       nativeLanguage: nativeLanguage
     });
 

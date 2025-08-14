@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { GenerateRequestSchema, generateUniqueHash, normalizeText } from "@/lib/core";
 import { generateSentence } from "@/lib/openai";
+import { codeToLanguageName } from "@/lib/languages";
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,8 +45,11 @@ export async function POST(request: NextRequest) {
     });
 
     const settings = user?.settings as any;
-    const userLanguage = settings?.language || 'ru';
-    const nativeLanguage = settings?.nativeLanguage || 'en';
+    const userLanguageCode = settings?.language || 'ru';
+    const nativeLanguageCode = settings?.nativeLanguage || 'en';
+
+    const targetLanguage = codeToLanguageName(userLanguageCode);
+    const nativeLanguage = codeToLanguageName(nativeLanguageCode);
 
     // Check if we already have a cached sentence for this lexeme-difficulty combination
     const existingSentence = await prisma.sentence.findFirst({
@@ -71,8 +75,8 @@ export async function POST(request: NextRequest) {
       lexeme: lexeme.lemma,
       pos: lexeme.pos || undefined,
       cefr: difficultyHint.cefrBand,
-      targetLanguage: userLanguage, // Use user's language preference
-      nativeLanguage: nativeLanguage // Use user's native language preference
+      targetLanguage: targetLanguage, // Use mapped language name
+      nativeLanguage: nativeLanguage // Use mapped language name
     });
 
     // Store the generated sentence in the database for future use
