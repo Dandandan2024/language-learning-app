@@ -12,6 +12,7 @@ import {
   generateUniqueHash
 } from "@/lib/core";
 import { generateSentence } from "@/lib/openai";
+import { codeToLanguageName } from "@/lib/languages";
 
 export async function POST(request: NextRequest) {
   try {
@@ -89,8 +90,11 @@ export async function POST(request: NextRequest) {
       // After placement completes, ensure the user has initial due study cards
       try {
         // Determine user language preferences
-        const userLanguage = settings?.language || 'ru';
-        const nativeLanguage = settings?.nativeLanguage || 'en';
+        const userLanguageCode = settings?.language || 'ru';
+        const nativeLanguageCode = settings?.nativeLanguage || 'en';
+
+        const targetLanguage = codeToLanguageName(userLanguageCode);
+        const nativeLanguage = codeToLanguageName(nativeLanguageCode);
 
         // If the database has no lexemes, seed a minimal fallback set
         const lexemeCount = await prisma.lexeme.count();
@@ -161,7 +165,7 @@ export async function POST(request: NextRequest) {
                 lexeme: lexeme.lemma,
                 pos: lexeme.pos || undefined,
                 cefr: estimate.cefrBand as any,
-                targetLanguage: userLanguage,
+                targetLanguage: targetLanguage,
                 nativeLanguage: nativeLanguage,
               });
 
