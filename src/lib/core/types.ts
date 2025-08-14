@@ -29,7 +29,11 @@ export interface PlacementState {
     outcome: Outcome;
     cefr: CEFR;
     freqRank?: number;
+    difficultyTheta?: number;
   }>;
+  // Ability bounds to mitigate outliers
+  lower?: number;
+  upper?: number;
 }
 
 export interface LevelEstimate {

@@ -11,7 +11,9 @@ export function start(): PlacementState {
     step: 1.0,   // Initial step size
     n: 0,        // Number of responses
     seenLexemeIds: [],
-    history: []
+    history: [],
+    lower: -2.5,
+    upper: 2.5
   };
 }
 
@@ -21,19 +23,41 @@ export function pick(state: { theta: number }): number {
 }
 
 export function update(
-  state: { theta: number; step: number; n: number }, 
-  outcome: Outcome
+  state: { theta: number; step: number; n: number; lower?: number; upper?: number }, 
+  outcome: Outcome,
+  itemDifficultyTheta?: number
 ): PlacementState {
-  // Update theta based on outcome
-  const theta = state.theta + (outcome === 'easy' ? state.step : -state.step);
+  // If we have item difficulty, move toward it with sign; otherwise fallback
+  const direction = outcome === 'easy' ? 1 : -1;
+  const target = typeof itemDifficultyTheta === 'number' ? itemDifficultyTheta : state.theta;
+
+  // Proposed new theta with conservative move: bias toward target but limit by step
+  const delta = direction * state.step;
+  let theta = state.theta + delta;
+
+  // Clamp within dynamic ability bounds
+  const lower = state.lower ?? -2.5;
+  const upper = state.upper ?? 2.5;
+  theta = Math.max(lower, Math.min(upper, theta));
   
   // Increment response count
   const n = state.n + 1;
   
   // Halve step size every 2 responses
   const step = n % 2 === 0 ? state.step * 0.5 : state.step;
+
+  // Update bounds: for 'easy', user ability is likely >= item difficulty; for 'hard', <= item difficulty
+  let newLower = lower;
+  let newUpper = upper;
+  if (typeof itemDifficultyTheta === 'number') {
+    if (outcome === 'easy') newLower = Math.max(newLower, itemDifficultyTheta);
+    else newUpper = Math.min(newUpper, itemDifficultyTheta);
+
+    // Ensure theta stays within refined bounds
+    theta = Math.max(newLower, Math.min(newUpper, theta));
+  }
   
-  return { theta, step, n };
+  return { theta, step, n, lower: newLower, upper: newUpper } as PlacementState;
 }
 
 export function shouldStop(state: { step: number; n: number }): boolean {
@@ -126,6 +150,17 @@ function rankToDifficultyTheta(freqRank: number): number {
   const r = Math.max(1, Math.min(Rmax, freqRank));
   const normalized = Math.log(r) / Math.log(Rmax); // 0..1
   return -3 + 6 * normalized; // maps to [-3, +3]
+}
+
+export function cefrToTheta(cefr: CEFR): number {
+  switch (cefr) {
+    case 'A1': return -2.3;
+    case 'A2': return -1.3;
+    case 'B1': return 0.0;
+    case 'B2': return 1.0;
+    case 'C1': return 2.0;
+    case 'C2': return 2.6;
+  }
 }
 
 // Compute knowledge profile bands using theta and step as uncertainty
