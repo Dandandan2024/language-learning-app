@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TARGET_LANGUAGE_OPTIONS, NATIVE_LANGUAGE_OPTIONS, LANGUAGE_LABELS } from "@/lib/languages";
+import Link from "next/link";
 
 type Settings = {
   dailyGoal: number;
@@ -64,6 +65,11 @@ export default function SettingsPage() {
       <Card className="w-full max-w-2xl">
         <CardHeader className="text-center">
           <CardTitle>Settings</CardTitle>
+          <div className="mt-2">
+            <Button variant="outline" asChild>
+              <Link href="/">Home</Link>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {error && (

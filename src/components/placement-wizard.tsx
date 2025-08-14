@@ -6,15 +6,61 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { PlacementItem } from "@/lib/core";
+import { TARGET_LANGUAGE_OPTIONS, NATIVE_LANGUAGE_OPTIONS } from "@/lib/languages";
 
 export function PlacementWizard() {
   const [currentItem, setCurrentItem] = useState<PlacementItem | null>(null);
   const [showTranslation, setShowTranslation] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [phase, setPhase] = useState<"language" | "placement">("language");
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [language, setLanguage] = useState<string>("ru");
+  const [nativeLanguage, setNativeLanguage] = useState<string>("en");
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+
   const router = useRouter();
 
-  // Load the next placement item
+  // Load existing settings to prefill language choices
+  useEffect(() => {
+    const loadSettings = async () => {
+      setSettingsLoading(true);
+      setSettingsError(null);
+      try {
+        const res = await fetch('/api/settings');
+        if (!res.ok) throw new Error('Failed to load settings');
+        const data = await res.json();
+        const s = data.settings || {};
+        setLanguage(s.language || 'ru');
+        setNativeLanguage(s.nativeLanguage || 'en');
+      } catch (e: any) {
+        setSettingsError(e?.message || 'Failed to load settings');
+      } finally {
+        setSettingsLoading(false);
+      }
+    };
+    loadSettings();
+  }, []);
+
+  const saveLanguagesAndStart = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language, nativeLanguage })
+      });
+      if (!res.ok) throw new Error('Failed to save languages');
+      setPhase('placement');
+    } catch (e: any) {
+      setError(e?.message || 'Failed to start placement');
+      setLoading(false);
+    }
+  };
+
+  // Load the next placement item (only after language phase completes)
   const loadNext = async () => {
     setLoading(true);
     setError(null);
@@ -40,6 +86,13 @@ export function PlacementWizard() {
       setLoading(false);
     }
   };
+
+  // Trigger loadNext when we switch to placement phase
+  useEffect(() => {
+    if (phase === 'placement') {
+      loadNext();
+    }
+  }, [phase]);
 
   // Submit answer and load next item or finish
   const submitAnswer = async (outcome: 'easy' | 'hard') => {
@@ -90,11 +143,6 @@ export function PlacementWizard() {
     }
   };
 
-  // Load first item on mount
-  useEffect(() => {
-    loadNext();
-  }, []);
-
   // Keyboard navigation
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -116,6 +164,62 @@ export function PlacementWizard() {
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [loading, showTranslation, currentItem]);
+
+  // Language selection phase UI
+  if (phase === 'language') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <Card className="w-full max-w-xl">
+          <CardHeader className="text-center">
+            <CardTitle className="mb-2">Choose your languages</CardTitle>
+            <p className="text-sm text-gray-600">Select your target language to learn and your native language for translations.</p>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {settingsError && (
+              <div className="p-3 bg-red-50 text-red-700 rounded text-sm">{settingsError}</div>
+            )}
+
+            {settingsLoading ? (
+              <div className="text-center">Loading…</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Target Language</label>
+                  <select
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                    className="w-full border rounded px-3 py-2 bg-white"
+                  >
+                    {TARGET_LANGUAGE_OPTIONS.map(opt => (
+                      <option key={opt.code} value={opt.code}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Native Language</label>
+                  <select
+                    value={nativeLanguage}
+                    onChange={(e) => setNativeLanguage(e.target.value)}
+                    className="w-full border rounded px-3 py-2 bg-white"
+                  >
+                    {NATIVE_LANGUAGE_OPTIONS.map(opt => (
+                      <option key={opt.code} value={opt.code}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-center pt-2">
+              <Button onClick={saveLanguagesAndStart} disabled={loading || settingsLoading}>
+                {loading ? 'Starting…' : 'Start Placement Test'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (error) {
     return (
