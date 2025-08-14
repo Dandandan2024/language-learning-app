@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StudyCard } from "@/lib/core";
+import Link from "next/link";
 
 export function StudyInterface() {
   const [currentCard, setCurrentCard] = useState<StudyCard | null>(null);
@@ -133,7 +134,12 @@ export function StudyInterface() {
           </CardHeader>
           <CardContent className="text-center space-y-4">
             <p>{error}</p>
-            <Button onClick={loadNext}>Check Again</Button>
+            <div className="flex justify-center gap-3">
+              <Button onClick={loadNext}>Check Again</Button>
+              <Button variant="outline" asChild>
+                <Link href="/">Home</Link>
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -153,6 +159,11 @@ export function StudyInterface() {
             <div className="animate-pulse text-sm text-gray-500">
               Loading next card...
             </div>
+            <div className="pt-4">
+              <Button variant="outline" asChild>
+                <Link href="/">Home</Link>
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -161,8 +172,13 @@ export function StudyInterface() {
 
   if (!currentCard) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex flex-col items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+        <div className="mt-4">
+          <Button variant="outline" asChild>
+            <Link href="/">Home</Link>
+          </Button>
+        </div>
       </div>
     );
   }
@@ -176,6 +192,11 @@ export function StudyInterface() {
             Learning: <span className="font-medium">{currentCard.lexeme.lemma}</span>
             {currentCard.lexeme.pos && ` (${currentCard.lexeme.pos})`}
           </p>
+          <div className="mt-2">
+            <Button variant="outline" asChild>
+              <Link href="/">Home</Link>
+            </Button>
+          </div>
         </CardHeader>
         
         <CardContent className="space-y-8">
