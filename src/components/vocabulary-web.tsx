@@ -56,6 +56,8 @@ export default function VocabularyWeb() {
 
   // Layout function using golden angle spiral
   const layout = useCallback(() => {
+    if (!points || points.length === 0) return;
+    
     const GA = Math.PI * (3 - Math.sqrt(5));
     const newPoints = points.map((point, i) => {
       const r = 3.1 * Math.sqrt(i + 2);
@@ -108,24 +110,66 @@ export default function VocabularyWeb() {
     return 1;
   }, []);
 
+  // Sample data for demonstration when database is not available
+  const sampleData: Lexeme[] = [
+    { id: '1', lemma: 'hello', pos: 'interjection', cefr: 'A1', freqRank: 1, px: 0, py: 0, conf: 10 },
+    { id: '2', lemma: 'good', pos: 'adjective', cefr: 'A1', freqRank: 2, px: 0, py: 0, conf: 7 },
+    { id: '3', lemma: 'water', pos: 'noun', cefr: 'A1', freqRank: 3, px: 0, py: 0, conf: 5 },
+    { id: '4', lemma: 'eat', pos: 'verb', cefr: 'A1', freqRank: 4, px: 0, py: 0, conf: 1 },
+    { id: '5', lemma: 'house', pos: 'noun', cefr: 'A1', freqRank: 5, px: 0, py: 0, conf: 10 },
+    { id: '6', lemma: 'because', pos: 'conjunction', cefr: 'A2', freqRank: 50, px: 0, py: 0, conf: 7 },
+    { id: '7', lemma: 'understand', pos: 'verb', cefr: 'A2', freqRank: 51, px: 0, py: 0, conf: 5 },
+    { id: '8', lemma: 'friend', pos: 'noun', cefr: 'A2', freqRank: 52, px: 0, py: 0, conf: 1 },
+    { id: '9', lemma: 'suggest', pos: 'verb', cefr: 'B1', freqRank: 200, px: 0, py: 0, conf: 10 },
+    { id: '10', lemma: 'opinion', pos: 'noun', cefr: 'B1', freqRank: 201, px: 0, py: 0, conf: 7 },
+    { id: '11', lemma: 'despite', pos: 'preposition', cefr: 'B2', freqRank: 500, px: 0, py: 0, conf: 5 },
+    { id: '12', lemma: 'achieve', pos: 'verb', cefr: 'B2', freqRank: 501, px: 0, py: 0, conf: 1 },
+  ];
+
   // Fetch user's lexeme data
   const fetchUserData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
+      console.log('Fetching vocabulary data...');
+
       // Fetch all lexemes with their states and reviews
       const response = await fetch('/api/vocabulary-web/data');
+      console.log('Response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch vocabulary data');
+        const errorText = await response.text();
+        console.error('Response not OK:', response.status, errorText);
+        
+        // If it's a database connection error, show sample data instead
+        if (response.status === 500 || response.status === 503) {
+          console.log('Database not available, showing sample data');
+          setPoints(sampleData);
+          const newStats = { 1: 0, 5: 0, 7: 0, 10: 0 };
+          sampleData.forEach((p: Lexeme) => newStats[p.conf as keyof typeof newStats]++);
+          setStats(newStats);
+          return;
+        }
+        
+        throw new Error(`Failed to fetch vocabulary data: ${response.status} ${errorText}`);
       }
 
       const data = await response.json();
+      console.log('Fetched data:', data);
+      
+      // Check if we have the required data
+      if (!data.lexemes || !Array.isArray(data.lexemes)) {
+        console.warn('No lexemes found in data, setting empty array');
+        setPoints([]);
+        setStats({ 1: 0, 5: 0, 7: 0, 10: 0 });
+        return;
+      }
       
       // Calculate confidence for each lexeme
       const lexemesWithConfidence = data.lexemes.map((lexeme: any) => {
-        const lexemeState = data.lexemeStates.find((ls: LexemeState) => ls.lexemeId === lexeme.id);
-        const lexemeReviews = data.reviews.filter((r: Review) => r.lexemeId === lexeme.id);
+        const lexemeState = data.lexemeStates?.find((ls: LexemeState) => ls.lexemeId === lexeme.id) || null;
+        const lexemeReviews = data.reviews?.filter((r: Review) => r.lexemeId === lexeme.id) || [];
         const conf = calculateConfidence(lexemeState, lexemeReviews);
         
         return {
@@ -136,6 +180,8 @@ export default function VocabularyWeb() {
         };
       });
 
+      console.log('Processed lexemes:', lexemesWithConfidence);
+
       setPoints(lexemesWithConfidence);
       
       // Update stats
@@ -144,6 +190,18 @@ export default function VocabularyWeb() {
       setStats(newStats);
       
     } catch (err) {
+      console.error('Error in fetchUserData:', err);
+      
+      // If there's a network error or database issue, show sample data
+      if (err instanceof Error && (err.message.includes('fetch') || err.message.includes('Failed to fetch'))) {
+        console.log('Network error, showing sample data');
+        setPoints(sampleData);
+        const newStats = { 1: 0, 5: 0, 7: 0, 10: 0 };
+        sampleData.forEach((p: Lexeme) => newStats[p.conf as keyof typeof newStats]++);
+        setStats(newStats);
+        return;
+      }
+      
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
@@ -181,17 +239,19 @@ export default function VocabularyWeb() {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, W, H);
 
-    // Draw points
-    points.forEach(p => {
-      const sx = p.px * scale + W/2 + tx;
-      const sy = p.py * scale + H/2 + ty;
-      const r = (pointSize + Math.max(0, 6 - Math.log2(1 + p.freqRank/200))) * 0.7;
-      
-      ctx.beginPath();
-      ctx.fillStyle = p.conf === 10 ? '#a50026' : p.conf === 7 ? '#fdae61' : p.conf === 5 ? '#fee08b' : '#4575b4';
-      ctx.arc(sx, sy, r, 0, Math.PI * 2);
-      ctx.fill();
-    });
+    // Draw points only if we have any
+    if (points && points.length > 0) {
+      points.forEach(p => {
+        const sx = p.px * scale + W/2 + tx;
+        const sy = p.py * scale + H/2 + ty;
+        const r = (pointSize + Math.max(0, 6 - Math.log2(1 + p.freqRank/200))) * 0.7;
+        
+        ctx.beginPath();
+        ctx.fillStyle = p.conf === 10 ? '#a50026' : p.conf === 7 ? '#fdae61' : p.conf === 5 ? '#fee08b' : '#4575b4';
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
   }, [points, scale, tx, ty, pointSize]);
 
   // Mouse event handlers
@@ -209,23 +269,23 @@ export default function VocabularyWeb() {
       setLastPos({ x: e.clientX, y: e.clientY });
     }
 
-    // Tooltip
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (rect) {
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
-      let best: Lexeme | null = null;
-      let bestDist = 16;
+          // Tooltip
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect && points && points.length > 0) {
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        let best: Lexeme | null = null;
+        let bestDist = 16;
 
-      points.forEach(p => {
-        const sx = p.px * scale + rect.width/2 + tx;
-        const sy = p.py * scale + rect.height/2 + ty;
-        const dist = Math.hypot(sx - mx, sy - my);
-        if (dist < bestDist) {
-          bestDist = dist;
-          best = p;
-        }
-      });
+        points.forEach(p => {
+          const sx = p.px * scale + rect.width/2 + tx;
+          const sy = p.py * scale + rect.height/2 + ty;
+          const dist = Math.hypot(sx - mx, sy - my);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = p;
+          }
+        });
 
       if (best) {
         const bestLexeme = best as Lexeme;
@@ -353,6 +413,14 @@ export default function VocabularyWeb() {
             <p className="text-xs opacity-80 mb-4">
               Each dot represents a word. Color indicates your confidence level based on your study performance.
             </p>
+            {points.length > 0 && points[0].id.startsWith('1') && (
+              <div className="mb-4 p-3 bg-yellow-900/20 border border-yellow-600/30 rounded-lg">
+                <p className="text-xs text-yellow-300">
+                  📚 <strong>Demo Mode:</strong> Showing sample data. 
+                  To see your real vocabulary progress, set up the database connection.
+                </p>
+              </div>
+            )}
 
             {/* Display Controls */}
             <div className="bg-[#0f1622] border border-white/6 rounded-xl p-3 mb-3">
@@ -415,6 +483,18 @@ export default function VocabularyWeb() {
             <p className="text-xs opacity-70">
               Total words: {points.length}
             </p>
+            {points.length === 0 && !loading && (
+              <div className="mt-4 p-3 bg-[#0f1622] border border-white/6 rounded-lg">
+                <p className="text-xs text-center opacity-70">
+                  No vocabulary data found. This might happen if:
+                </p>
+                <ul className="text-xs opacity-70 mt-2 space-y-1">
+                  <li>• You haven't completed the placement test yet</li>
+                  <li>• Your vocabulary database is empty</li>
+                  <li>• There was an issue loading your data</li>
+                </ul>
+              </div>
+            )}
           </aside>
 
           {/* Canvas */}
