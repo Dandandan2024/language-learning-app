@@ -3,6 +3,7 @@ export * from './types';
 export * from './fsrs';
 export * from './placement';
 export * from './schemas';
+export * from './irt';
 
 // Utility functions
 export function generateUniqueHash(text: string): string {

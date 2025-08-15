@@ -20,6 +20,9 @@ model User {
   reviews       Review[]
   lexemeStates  LexemeState[]
   cards         Card[]
+  assessmentSessions AssessmentSession[]
+  assessmentResponses AssessmentResponse[]
+  lexemeAbilities LexemeAbility[]
 }
 
 model Lexeme {
@@ -33,9 +36,23 @@ model Lexeme {
   sentences    Sentence[]
   cards        Card[]
   lexemeStates LexemeState[]
+  assessmentItems AssessmentItem[]
+  assessmentResponses AssessmentResponse[]
+  lexemeAbilities LexemeAbility[]
+
+  // Added fields for probabilistic assessment
+  familyId          String?
+  zipf              Float?
+  length            Int?
+  morphComplex      Int?      // 0..2 heuristic
+  cognate           Boolean?  @default(false)
+  falseFriend       Boolean?  @default(false)
+  bInitRecognition  Float?
+  bInitRecall       Float?
 
   @@index([freqRank])
   @@index([cefr])
+  @@index([zipf])
 }
 
 model Sentence {
@@ -106,4 +123,88 @@ model LevelEstimate {
   confidence Float    // 0..1
   updatedAt  DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id])
+
+  // Optional IRT summary
+  theta      Float?
+  thetaVar   Float?
+}
+
+/// Assessment enums and models for IRT/CAT placement
+
+enum AssessmentItemType {
+  yesno_real
+  yesno_pseudo
+  mc4
+  recall
+}
+
+model AssessmentSession {
+  id              String    @id @default(cuid())
+  userId          String
+  stage           String    // "yesno" | "cat" | "done"
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  currentTheta    Float     @default(0)
+  currentVar      Float     @default(1)
+  yesNoCompleted  Boolean   @default(false)
+  falseAlarmRate  Float?
+  config          Json?
+
+  user            User      @relation(fields: [userId], references: [id])
+  items           AssessmentItem[]
+  responses       AssessmentResponse[]
+
+  @@index([userId, startedAt])
+}
+
+model AssessmentItem {
+  id           String               @id @default(cuid())
+  sessionId    String
+  type         AssessmentItemType
+  lexemeId     String?
+  pseudoword   String?
+  g            Float                // guessing parameter
+  b            Float?               // difficulty snapshot used when presented
+  exposure     Int                  @default(0)
+  presentedAt  DateTime             @default(now())
+
+  session      AssessmentSession    @relation(fields: [sessionId], references: [id])
+  lexeme       Lexeme?              @relation(fields: [lexemeId], references: [id])
+  responses    AssessmentResponse[]
+
+  @@index([sessionId])
+  @@index([lexemeId])
+}
+
+model AssessmentResponse {
+  id            String            @id @default(cuid())
+  sessionId     String
+  itemId        String
+  lexemeId      String?
+  userId        String
+  y             Int               // 0 or 1
+  respondedAt   DateTime          @default(now())
+  responseMs    Int?
+  thetaBefore   Float?
+  thetaAfter    Float?
+
+  session       AssessmentSession  @relation(fields: [sessionId], references: [id])
+  item          AssessmentItem     @relation(fields: [itemId], references: [id])
+  lexeme        Lexeme?            @relation(fields: [lexemeId], references: [id])
+  user          User               @relation(fields: [userId], references: [id])
+
+  @@index([sessionId, respondedAt])
+}
+
+// Optional per-user per-lexeme difficulty overrides
+model LexemeAbility {
+  userId   String
+  lexemeId String
+  bHat     Float
+  bVar     Float?
+
+  user     User   @relation(fields: [userId], references: [id])
+  lexeme   Lexeme @relation(fields: [lexemeId], references: [id])
+
+  @@id([userId, lexemeId])
 }
