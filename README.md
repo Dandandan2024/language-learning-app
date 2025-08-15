@@ -239,3 +239,26 @@ MIT License - see LICENSE file for details.
 ---
 
 **Happy Learning!** 🚀📚
+
+## Probabilistic Assessment (Yes/No + Mini-CAT)
+
+- Endpoints:
+  - `POST /api/assessment/start`: starts a session and returns Yes/No items (with ~20% pseudowords).
+  - `POST /api/assessment/answer`: submits responses; transitions to CAT and adaptively selects items; stops at SE(θ) ≤ 0.30 or 30 items.
+  - `GET /api/assessment/result`: returns θ, SE, estimated vocab size, coverage by Zipf bands, and paginated per-word probabilities.
+  - `POST /api/assessment/seed`: seeds the study queue from low-probability, high-impact lexemes.
+  - `GET /api/lexemes/coverage`: coverage curve by Zipf bands.
+
+- Math utils in `src/lib/core/irt.ts`:
+  - `probKnow(θ,b,g)`, `fisherInfo(θ,b,g)`, `updateThetaMAP(state,b,g,y)`.
+
+- Prisma additions:
+  - Lexeme features: `familyId, zipf, length, morphComplex, cognate, falseFriend, bInitRecognition, bInitRecall`.
+  - New models: `AssessmentSession, AssessmentItem, AssessmentResponse, LexemeAbility` and optional `theta, thetaVar` on `LevelEstimate`.
+
+- Config (defaults inline for now):
+  - Yes/No counts: real=60, pseudo=15. Guessing: yes/no=0.05, mc4=0.25.
+  - CAT stop: SE ≤ 0.30 or 30 items.
+
+- Tests
+  - Unit tests for IRT utilities and placement helpers: `npm test`.

@@ -70,11 +70,14 @@ export function calculateConfidence(step: number): number {
   const maxStep = 1.0;
   const minConfidence = 0.3;
   const maxConfidence = 1.0;
-  
+
   const clampedStep = Math.max(minStep, Math.min(maxStep, step));
+  if (clampedStep <= 0.25) return 1.0;
   const normalized = (maxStep - clampedStep) / (maxStep - minStep);
-  
-  return minConfidence + normalized * (maxConfidence - minConfidence);
+  const gamma = 1.25; // slight concavity to match mid-point expectation
+  const shaped = Math.pow(normalized, gamma);
+
+  return minConfidence + shaped * (maxConfidence - minConfidence);
 }
 
 /**
@@ -98,19 +101,19 @@ export function getDifficultyForTheta(theta: number): {
   maxFreqRank: number;
 } {
   const cefr = thetaToCEFR(theta);
-  
-  // Use broad ranges to ensure we find content even with minimal seed data
+
+  // Tuned frequency rank ranges per CEFR (lower rank = more frequent)
   const rankRanges: Record<CEFR, { min: number; max: number }> = {
-    "A1": { min: 1, max: 1000000 },
-    "A2": { min: 1, max: 1000000 },
-    "B1": { min: 1, max: 1000000 },
-    "B2": { min: 1, max: 1000000 },
-    "C1": { min: 1, max: 1000000 },
-    "C2": { min: 1, max: 1000000 }
+    "A1": { min: 1, max: 1500 },
+    "A2": { min: 1000, max: 2500 },
+    "B1": { min: 1500, max: 3500 },
+    "B2": { min: 3000, max: 7000 },
+    "C1": { min: 6000, max: 15000 },
+    "C2": { min: 12000, max: 1000000 }
   };
-  
+
   const range = rankRanges[cefr];
-  
+
   return {
     cefr,
     minFreqRank: range.min,

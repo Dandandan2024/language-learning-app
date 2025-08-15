@@ -3,6 +3,7 @@ export * from "./core/types";
 export * from "./core/fsrs";
 export * from "./core/placement";
 export * from "./core/schemas";
+export * from "./core/irt";
 
 // Utility functions
 export function generateUniqueHash(text: string): string {
