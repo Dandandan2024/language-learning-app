@@ -97,8 +97,13 @@ export default async function HomePage() {
             
             <div className="grid grid-cols-2 gap-4">
               <Button variant="outline" asChild>
+                <Link href="/vocabulary-web">Vocabulary Web</Link>
+              </Button>
+              <Button variant="outline" asChild>
                 <Link href="/settings">Settings</Link>
               </Button>
+            </div>
+            <div className="grid grid-cols-1 gap-4">
               <Button variant="outline" asChild>
                 <Link href="/api/auth/signout">Sign Out</Link>
               </Button>
