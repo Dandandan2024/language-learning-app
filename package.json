@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && NEXT_DISABLE_ESLINT=1 next build",
+    "build": "prisma generate && prisma db push && NEXT_DISABLE_ESLINT=1 next build",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
@@ -51,6 +51,6 @@
     "tailwindcss": "^3.4.17",
     "ts-jest": "^29.1.1",
     "tsx": "^4.6.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.3.0"
   }
 }
