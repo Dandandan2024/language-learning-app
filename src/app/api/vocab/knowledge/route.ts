@@ -28,19 +28,17 @@ export async function GET() {
       }
     });
 
-    // Get all lexemes the user hasn't studied yet
-    const studiedLexemeIds = lexemeStates.map(ls => ls.lexemeId);
-    const unstudiedLexemes = await prisma.lexeme.findMany({
-      where: {
-        id: {
-          notIn: studiedLexemeIds
-        }
-      },
+    // Get all lexemes (no limit - we want to show everything)
+    const allLexemes = await prisma.lexeme.findMany({
       orderBy: {
         freqRank: 'asc'
-      },
-      take: 500 // Limit to top 500 most frequent words for performance
+      }
     });
+
+    // Create a map of studied lexemes for quick lookup
+    const studiedMap = new Map(
+      lexemeStates.map(state => [state.lexemeId, state])
+    );
 
     // Get review history for studied words
     const reviews = await prisma.review.findMany({
@@ -52,39 +50,54 @@ export async function GET() {
       }
     });
 
+    // Create a map of reviews by lexeme ID
+    const reviewsByLexeme = new Map<string, typeof reviews>();
+    reviews.forEach(review => {
+      if (!reviewsByLexeme.has(review.lexemeId)) {
+        reviewsByLexeme.set(review.lexemeId, []);
+      }
+      reviewsByLexeme.get(review.lexemeId)!.push(review);
+    });
+
     // Calculate knowledge score for each word
-    const vocabKnowledge = [
-      // Studied words with their knowledge scores
-      ...lexemeStates.map(state => {
-        const wordReviews = reviews.filter(r => r.lexemeId === state.lexemeId);
+    const vocabKnowledge = allLexemes.map(lexeme => {
+      const state = studiedMap.get(lexeme.id);
+      
+      if (state) {
+        // Studied word - calculate based on actual data
+        const wordReviews = reviewsByLexeme.get(lexeme.id) || [];
         const avgRating = wordReviews.length > 0 
           ? wordReviews.reduce((sum, r) => sum + r.rating, 0) / wordReviews.length 
           : 2.5;
         
-        // Calculate knowledge score (0-1) based on:
-        // - Stability (higher = better known)
-        // - Difficulty (lower = better known)
-        // - Average rating
-        // - Number of successful reviews
+        // Calculate knowledge score (0-1) based on multiple factors
         const stabilityScore = Math.min(state.stability / 180, 1); // Cap at 180 days
         const difficultyScore = 1 - state.difficulty;
         const ratingScore = (avgRating - 1) / 3; // Normalize 1-4 to 0-1
         const reviewScore = Math.min(state.reps / 10, 1); // Cap at 10 reviews
         
-        const knowledgeScore = (
+        // Map to 1-10 scale (1=unknown, 5=learning, 7=familiar, 10=mastered)
+        const rawScore = (
           stabilityScore * 0.4 + 
           difficultyScore * 0.2 + 
           ratingScore * 0.2 + 
           reviewScore * 0.2
         );
+        
+        let knowledgeLevel = 1;
+        if (rawScore > 0.8) knowledgeLevel = 10;
+        else if (rawScore > 0.6) knowledgeLevel = 7;
+        else if (rawScore > 0.3) knowledgeLevel = 5;
+        else knowledgeLevel = 1;
 
         return {
-          id: state.lexeme.id,
-          lemma: state.lexeme.lemma,
-          pos: state.lexeme.pos,
-          cefr: state.lexeme.cefr,
-          freqRank: state.lexeme.freqRank,
-          knowledgeScore,
+          id: lexeme.id,
+          lemma: lexeme.lemma,
+          pos: lexeme.pos || '',
+          cefr: lexeme.cefr,
+          freqRank: lexeme.freqRank,
+          knowledgeLevel,
+          knowledgeScore: rawScore,
           studied: true,
           stability: state.stability,
           difficulty: state.difficulty,
@@ -93,10 +106,8 @@ export async function GET() {
           due: state.due,
           suspended: state.suspended
         };
-      }),
-      // Unstudied words with estimated knowledge based on level
-      ...unstudiedLexemes.map(lexeme => {
-        // Estimate knowledge based on CEFR level comparison
+      } else {
+        // Unstudied word - estimate based on level
         const levelMap: Record<string, number> = {
           'A1': 1, 'A2': 2, 'B1': 3, 'B2': 4, 'C1': 5, 'C2': 6
         };
@@ -104,15 +115,28 @@ export async function GET() {
         const userLevel = levelMap[levelEstimate.cefrBand] || 3;
         const wordLevel = levelMap[lexeme.cefr] || 3;
         
-        // If word is below user's level, assume some knowledge
-        // If at or above, assume less knowledge
+        // Default knowledge levels based on CEFR comparison
+        let knowledgeLevel = 1;
         let knowledgeScore = 0;
+        
         if (wordLevel < userLevel) {
-          knowledgeScore = 0.3 + (userLevel - wordLevel) * 0.15; // 30-75% based on level difference
+          // Word is below user's level - assume some passive knowledge
+          const diff = userLevel - wordLevel;
+          if (diff >= 2) {
+            knowledgeLevel = 7; // Well below level - probably familiar
+            knowledgeScore = 0.6 + diff * 0.1;
+          } else {
+            knowledgeLevel = 5; // Slightly below - somewhat familiar
+            knowledgeScore = 0.4 + diff * 0.15;
+          }
         } else if (wordLevel === userLevel) {
-          knowledgeScore = 0.15; // 15% for same level
+          // At user's level - learning zone
+          knowledgeLevel = 5;
+          knowledgeScore = 0.3;
         } else {
-          knowledgeScore = Math.max(0, 0.1 - (wordLevel - userLevel) * 0.03); // 0-10% for higher levels
+          // Above user's level - unknown
+          knowledgeLevel = 1;
+          knowledgeScore = Math.max(0, 0.2 - (wordLevel - userLevel) * 0.05);
         }
         
         // Adjust by confidence in level estimate
@@ -121,9 +145,10 @@ export async function GET() {
         return {
           id: lexeme.id,
           lemma: lexeme.lemma,
-          pos: lexeme.pos,
+          pos: lexeme.pos || '',
           cefr: lexeme.cefr,
           freqRank: lexeme.freqRank,
+          knowledgeLevel,
           knowledgeScore,
           studied: false,
           stability: 0,
@@ -133,8 +158,8 @@ export async function GET() {
           due: null,
           suspended: false
         };
-      })
-    ];
+      }
+    });
 
     // Sort by frequency rank for consistent visualization
     vocabKnowledge.sort((a, b) => a.freqRank - b.freqRank);
@@ -145,7 +170,7 @@ export async function GET() {
         vocabIndex: levelEstimate.vocabIndex,
         confidence: levelEstimate.confidence
       },
-      vocabulary: vocabKnowledge.slice(0, 300), // Limit to 300 words for visualization
+      vocabulary: vocabKnowledge,
       totalWords: vocabKnowledge.length,
       studiedCount: lexemeStates.length,
       totalReviews: reviews.length

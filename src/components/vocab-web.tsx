@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import * as d3 from "d3";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 
 interface VocabWord {
   id: string;
   lemma: string;
-  pos: string | null;
+  pos: string;
   cefr: string;
   freqRank: number;
+  knowledgeLevel: number;
   knowledgeScore: number;
   studied: boolean;
   stability: number;
@@ -33,15 +34,57 @@ interface VocabData {
   totalReviews: number;
 }
 
+interface Point {
+  word: VocabWord;
+  x: number;
+  y: number;
+  displayLevel: number;
+}
+
+// Golden angle for spiral layout
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+// Color scheme matching the example
+const COLORS = {
+  bg: "#0b0f14",
+  panel: "#0f1622",
+  ink: "#e8eef6",
+  level10: "#a50026", // Mastered
+  level7: "#fdae61",  // Familiar
+  level5: "#fee08b",  // Learning
+  level1: "#4575b4",  // Unknown
+};
+
 export function VocabWeb() {
-  const svgRef = useRef<SVGSVGElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<number>();
+  
   const [data, setData] = useState<VocabData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedWord, setSelectedWord] = useState<VocabWord | null>(null);
-  const [viewMode, setViewMode] = useState<"frequency" | "cefr" | "knowledge">("knowledge");
-  const [hoveredWord, setHoveredWord] = useState<string | null>(null);
+  const [points, setPoints] = useState<Point[]>([]);
+  const [hoveredWord, setHoveredWord] = useState<VocabWord | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  
+  // View controls
+  const [scale, setScale] = useState(2);
+  const [translation, setTranslation] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [pointSize, setPointSize] = useState(2.4);
+  
+  // Knowledge level controls for each CEFR band
+  const [levelControls, setLevelControls] = useState({
+    A1: { level10: 100, level7: 0, level5: 0 },
+    A2: { level10: 100, level7: 0, level5: 0 },
+    B1: { level10: 14, level7: 70, level5: 10 },
+    B2: { level10: 5, level7: 20, level5: 0 },
+    C1: { level10: 0, level7: 0, level5: 0 },
+    C2: { level10: 0, level7: 0, level5: 0 },
+  });
 
+  // Fetch vocabulary data
   useEffect(() => {
     fetchVocabData();
   }, []);
@@ -55,6 +98,10 @@ export function VocabWeb() {
       }
       const data = await response.json();
       setData(data);
+      
+      // Initialize points with spiral layout
+      const newPoints = layoutPoints(data.vocabulary);
+      setPoints(newPoints);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
@@ -62,632 +109,472 @@ export function VocabWeb() {
     }
   };
 
-  useEffect(() => {
-    if (!data || !svgRef.current) return;
+  // Layout points in a spiral pattern
+  const layoutPoints = (vocabulary: VocabWord[]): Point[] => {
+    return vocabulary.map((word, i) => {
+      const radius = 3.1 * Math.sqrt(i + 2);
+      const angle = (i + 2) * GOLDEN_ANGLE;
+      return {
+        word,
+        x: radius * Math.cos(angle),
+        y: radius * Math.sin(angle),
+        displayLevel: word.knowledgeLevel,
+      };
+    });
+  };
 
-    // Clear previous visualization
-    d3.select(svgRef.current).selectAll("*").remove();
+  // Apply knowledge level controls to points
+  const applyLevelControls = useCallback(() => {
+    if (!data) return;
 
-    const width = 900;
-    const height = 700;
-    const margin = { top: 40, right: 160, bottom: 40, left: 40 };
+    const updatedPoints = points.map(point => {
+      const controls = levelControls[point.word.cefr as keyof typeof levelControls];
+      if (!controls) return point;
 
-    const svg = d3.select(svgRef.current)
-      .attr("viewBox", `0 0 ${width} ${height}`)
-      .attr("preserveAspectRatio", "xMidYMid meet");
-
-    // Create a group for zooming and panning
-    const g = svg.append("g");
-
-    // Add zoom behavior with better controls
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.3, 8])
-      .on("zoom", (event) => {
-        g.attr("transform", event.transform);
-      });
-
-    svg.call(zoom);
-
-    // Add background gradient
-    const bgGradient = svg.append("defs")
-      .append("radialGradient")
-      .attr("id", "bg-gradient");
-    
-    bgGradient.append("stop")
-      .attr("offset", "0%")
-      .attr("stop-color", "#f3f4f6")
-      .attr("stop-opacity", 0.1);
-    
-    bgGradient.append("stop")
-      .attr("offset", "100%")
-      .attr("stop-color", "#e5e7eb")
-      .attr("stop-opacity", 0.2);
-
-    svg.insert("rect", ":first-child")
-      .attr("width", width)
-      .attr("height", height)
-      .attr("fill", "url(#bg-gradient)");
-
-    // Prepare the data for visualization
-    const nodes = data.vocabulary.map(word => ({
-      ...word,
-      x: 0,
-      y: 0,
-      radius: 0,
-      targetX: 0,
-      targetY: 0
-    }));
-
-    // Calculate node positions based on view mode with improved algorithms
-    const layoutNodes = () => {
-      const centerX = width / 2;
-      const centerY = height / 2;
-
-      if (viewMode === "knowledge") {
-        // Spiral layout based on knowledge score
-        // Center: well-known words, Spiral out: less known words
-        const sortedNodes = [...nodes].sort((a, b) => b.knowledgeScore - a.knowledgeScore);
-        
-        sortedNodes.forEach((node, i) => {
-          const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // Golden angle ~137.5°
-          const angle = i * goldenAngle;
-          const radius = Math.sqrt(i) * 15;
-          
-          node.targetX = centerX + Math.cos(angle) * radius;
-          node.targetY = centerY + Math.sin(angle) * radius;
-          node.radius = 4 + node.knowledgeScore * 14; // Size based on knowledge
-        });
-      } else if (viewMode === "frequency") {
-        // Spiral layout based on frequency rank
-        nodes.forEach((node, i) => {
-          const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-          const angle = i * goldenAngle;
-          const radius = Math.sqrt(node.freqRank) * 8;
-          
-          node.targetX = centerX + Math.cos(angle) * radius;
-          node.targetY = centerY + Math.sin(angle) * radius;
-          node.radius = 6 + (1 - Math.min(node.freqRank / 1000, 1)) * 12; // Size based on frequency
-        });
-      } else if (viewMode === "cefr") {
-        // Hierarchical layout by CEFR level with force simulation
-        const levels = ["A1", "A2", "B1", "B2", "C1", "C2"];
-        const levelGroups = d3.group(nodes, d => d.cefr);
-        const levelSpacing = (height - margin.top - margin.bottom) / (levels.length + 1);
-        
-        levels.forEach((level, levelIndex) => {
-          const levelNodes = levelGroups.get(level) || [];
-          const levelY = margin.top + (levelIndex + 1) * levelSpacing;
-          const nodeSpacing = (width - margin.left - margin.right) / (levelNodes.length + 1);
-          
-          levelNodes.forEach((node, i) => {
-            node.targetX = margin.left + (i + 1) * nodeSpacing;
-            node.targetY = levelY + (Math.random() - 0.5) * 30; // Add slight randomness
-            node.radius = 5 + node.knowledgeScore * 10;
-          });
-        });
-      }
-
-      // Initialize positions if not set
-      nodes.forEach(node => {
-        if (node.x === 0 && node.y === 0) {
-          node.x = node.targetX;
-          node.y = node.targetY;
-        }
-      });
-    };
-
-    layoutNodes();
-
-    // Color scales with better gradients
-    const knowledgeColorScale = d3.scaleSequential(d3.interpolateRdYlGn)
-      .domain([0, 1]);
-
-    const cefrColorScale = d3.scaleOrdinal<string>()
-      .domain(["A1", "A2", "B1", "B2", "C1", "C2"])
-      .range(["#dbeafe", "#bfdbfe", "#fef3c7", "#fde047", "#fed7aa", "#fca5a5"]);
-
-    // Create force simulation for smooth transitions and collision detection
-    const simulation = d3.forceSimulation(nodes)
-      .force("x", d3.forceX((d: any) => d.targetX).strength(0.3))
-      .force("y", d3.forceY((d: any) => d.targetY).strength(0.3))
-      .force("collide", d3.forceCollide((d: any) => d.radius + 1).strength(0.8))
-      .force("charge", d3.forceManyBody().strength(-5))
-      .alpha(0.8)
-      .alphaDecay(0.02);
-
-    // Draw connections for related words (connect studied words with similar knowledge scores)
-    if (viewMode === "knowledge") {
-      const links: any[] = [];
-      const studiedNodes = nodes.filter(n => n.studied);
+      // Calculate which level this word should display based on controls
+      const total = controls.level10 + controls.level7 + controls.level5;
+      const level1Pct = Math.max(0, 100 - total);
       
-      studiedNodes.forEach((node, i) => {
-        studiedNodes.slice(i + 1).forEach(otherNode => {
-          const scoreDiff = Math.abs(node.knowledgeScore - otherNode.knowledgeScore);
-          if (scoreDiff < 0.1 && Math.abs(node.freqRank - otherNode.freqRank) < 100) {
-            links.push({
-              source: node,
-              target: otherNode,
-              strength: 1 - scoreDiff * 10
-            });
-          }
-        });
-      });
+      // Use a deterministic hash of the word to decide its level
+      const hash = hashWord(point.word.lemma + point.word.cefr);
+      const roll = (hash % 100);
+      
+      let displayLevel = 1;
+      if (roll < controls.level10) {
+        displayLevel = 10;
+      } else if (roll < controls.level10 + controls.level7) {
+        displayLevel = 7;
+      } else if (roll < controls.level10 + controls.level7 + controls.level5) {
+        displayLevel = 5;
+      }
+      
+      return { ...point, displayLevel };
+    });
 
-      const linkGroup = g.append("g")
-        .attr("class", "links")
-        .selectAll("line")
-        .data(links)
-        .enter()
-        .append("line")
-        .attr("stroke", "#e5e7eb")
-        .attr("stroke-width", d => d.strength)
-        .attr("stroke-opacity", 0.3);
+    setPoints(updatedPoints);
+  }, [data, points, levelControls]);
 
-      simulation.on("tick", () => {
-        linkGroup
-          .attr("x1", d => d.source.x)
-          .attr("y1", d => d.source.y)
-          .attr("x2", d => d.target.x)
-          .attr("y2", d => d.target.y);
+  // Simple hash function for deterministic word assignment
+  const hashWord = (str: string): number => {
+    let hash = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      hash ^= str.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return Math.abs(hash);
+  };
 
-        nodeGroup
-          .attr("transform", d => `translate(${d.x},${d.y})`);
-      });
-    } else {
-      simulation.on("tick", () => {
-        nodeGroup
-          .attr("transform", d => `translate(${d.x},${d.y})`);
-      });
+  // Update level controls
+  const updateLevelControl = (
+    band: keyof typeof levelControls,
+    level: 'level10' | 'level7' | 'level5',
+    value: number
+  ) => {
+    const newControls = { ...levelControls };
+    const bandControls = { ...newControls[band] };
+    
+    // Ensure total doesn't exceed 100%
+    bandControls[level] = value;
+    const total = bandControls.level10 + bandControls.level7 + bandControls.level5;
+    if (total > 100) {
+      // Adjust other values proportionally
+      const excess = total - 100;
+      if (level !== 'level10' && bandControls.level10 > 0) {
+        bandControls.level10 = Math.max(0, bandControls.level10 - excess);
+      } else if (level !== 'level7' && bandControls.level7 > 0) {
+        bandControls.level7 = Math.max(0, bandControls.level7 - excess);
+      } else if (level !== 'level5' && bandControls.level5 > 0) {
+        bandControls.level5 = Math.max(0, bandControls.level5 - excess);
+      }
+    }
+    
+    newControls[band] = bandControls;
+    setLevelControls(newControls);
+  };
+
+  // Apply controls when they change
+  useEffect(() => {
+    applyLevelControls();
+  }, [levelControls]);
+
+  // Canvas drawing
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d', { alpha: false });
+    if (!canvas || !ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const width = rect.width * dpr;
+    const height = rect.height * dpr;
+
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
     }
 
-    // Draw nodes with better styling
-    const nodeGroup = g.selectAll(".node")
-      .data(nodes)
-      .enter()
-      .append("g")
-      .attr("class", "node")
-      .attr("transform", d => `translate(${d.x},${d.y})`);
+    // Clear and draw background
+    ctx.fillStyle = COLORS.bg;
+    ctx.fillRect(0, 0, width, height);
 
-    // Add shadow effect for depth
-    const shadowFilter = svg.append("defs")
-      .append("filter")
-      .attr("id", "shadow")
-      .attr("x", "-50%")
-      .attr("y", "-50%")
-      .attr("width", "200%")
-      .attr("height", "200%");
-    
-    shadowFilter.append("feGaussianBlur")
-      .attr("in", "SourceAlpha")
-      .attr("stdDeviation", 2);
-    
-    shadowFilter.append("feOffset")
-      .attr("dx", 0)
-      .attr("dy", 1)
-      .attr("result", "offsetblur");
-    
-    const feMerge = shadowFilter.append("feMerge");
-    feMerge.append("feMergeNode")
-      .attr("in", "offsetblur");
-    feMerge.append("feMergeNode")
-      .attr("in", "SourceGraphic");
-
-    // Add circles with enhanced interactivity
-    nodeGroup.append("circle")
-      .attr("r", d => d.radius)
-      .attr("fill", d => {
-        if (viewMode === "knowledge") {
-          return knowledgeColorScale(d.knowledgeScore);
-        } else if (viewMode === "cefr") {
-          return cefrColorScale(d.cefr);
-        } else {
-          return d.studied ? "#86efac" : "#cbd5e1";
-        }
-      })
-      .attr("stroke", d => {
-        if (d.studied) {
-          return d.suspended ? "#ef4444" : "#22c55e";
-        }
-        return "#94a3b8";
-      })
-      .attr("stroke-width", d => d.studied ? 2.5 : 1.5)
-      .attr("opacity", d => d.suspended ? 0.4 : 0.9)
-      .style("cursor", "pointer")
-      .style("filter", d => d.studied ? "url(#shadow)" : "none")
-      .on("mouseover", function(event, d) {
-        setHoveredWord(d.id);
-        
-        // Enhance the hovered node
-        d3.select(this)
-          .transition()
-          .duration(200)
-          .attr("r", d.radius * 1.4)
-          .attr("opacity", 1)
-          .attr("stroke-width", 3);
-        
-        // Dim other nodes
-        nodeGroup.selectAll("circle")
-          .filter((n: any) => n.id !== d.id)
-          .transition()
-          .duration(200)
-          .attr("opacity", 0.3);
-        
-        // Show connections to this node
-        if (viewMode === "knowledge" && d.studied) {
-          g.selectAll(".links line")
-            .transition()
-            .duration(200)
-            .attr("stroke-opacity", (l: any) => 
-              l.source.id === d.id || l.target.id === d.id ? 0.6 : 0.1
-            );
-        }
-      })
-      .on("mouseout", function(event, d) {
-        setHoveredWord(null);
-        
-        // Reset node appearance
-        d3.select(this)
-          .transition()
-          .duration(200)
-          .attr("r", d.radius)
-          .attr("opacity", d.suspended ? 0.4 : 0.9)
-          .attr("stroke-width", d.studied ? 2.5 : 1.5);
-        
-        // Reset other nodes
-        nodeGroup.selectAll("circle")
-          .transition()
-          .duration(200)
-          .attr("opacity", (n: any) => n.suspended ? 0.4 : 0.9);
-        
-        // Reset connections
-        if (viewMode === "knowledge") {
-          g.selectAll(".links line")
-            .transition()
-            .duration(200)
-            .attr("stroke-opacity", 0.3);
-        }
-      })
-      .on("click", (event, d) => {
-        event.stopPropagation();
-        setSelectedWord(d);
-      });
-
-    // Add labels for important words with better positioning
-    const labelNodes = nodes.filter(d => 
-      d.freqRank <= 30 || 
-      d.knowledgeScore > 0.8 || 
-      (d.studied && d.reps > 5)
+    // Add subtle gradient
+    const gradient = ctx.createRadialGradient(
+      width / 2, height / 2, 20,
+      width / 2, height / 2, Math.max(width, height) / 2
     );
+    gradient.addColorStop(0, 'rgba(255,255,255,0.06)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
 
-    nodeGroup
-      .filter(d => labelNodes.includes(d))
-      .append("text")
-      .attr("dy", d => -d.radius - 5)
-      .attr("text-anchor", "middle")
-      .attr("font-size", "11px")
-      .attr("font-weight", "500")
-      .attr("fill", "#1f2937")
-      .attr("pointer-events", "none")
-      .style("text-shadow", "0 0 3px white, 0 0 3px white")
-      .text(d => d.lemma);
+    // Transform for pan and zoom
+    ctx.save();
+    ctx.translate(width / 2 + translation.x * dpr, height / 2 + translation.y * dpr);
+    ctx.scale(scale * dpr, scale * dpr);
 
-    // Add enhanced legend with better styling
-    const legend = svg.append("g")
-      .attr("transform", `translate(${width - 140}, 40)`);
+    // Draw points
+    points.forEach(point => {
+      const baseRadius = pointSize + Math.max(0, 6 - Math.log2(1 + point.word.freqRank / 200));
+      const radius = baseRadius * 0.7;
 
-    // Legend background
-    legend.append("rect")
-      .attr("x", -10)
-      .attr("y", -10)
-      .attr("width", 130)
-      .attr("height", viewMode === "cefr" ? 150 : 120)
-      .attr("fill", "white")
-      .attr("stroke", "#e5e7eb")
-      .attr("rx", 5)
-      .attr("opacity", 0.95);
+      // Choose color based on display level
+      let color = COLORS.level1;
+      if (point.displayLevel === 10) color = COLORS.level10;
+      else if (point.displayLevel === 7) color = COLORS.level7;
+      else if (point.displayLevel === 5) color = COLORS.level5;
 
-    if (viewMode === "knowledge") {
-      // Knowledge score gradient legend
-      const gradient = svg.append("defs")
-        .append("linearGradient")
-        .attr("id", "knowledge-gradient")
-        .attr("x1", "0%")
-        .attr("x2", "0%")
-        .attr("y1", "0%")
-        .attr("y2", "100%");
+      ctx.beginPath();
+      ctx.fillStyle = color;
+      ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+      ctx.fill();
 
-      gradient.append("stop")
-        .attr("offset", "0%")
-        .attr("stop-color", knowledgeColorScale(1));
+      // Add glow for studied words
+      if (point.word.studied) {
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = 0.3;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    });
 
-      gradient.append("stop")
-        .attr("offset", "50%")
-        .attr("stop-color", knowledgeColorScale(0.5));
+    ctx.restore();
+  }, [points, scale, translation, pointSize]);
 
-      gradient.append("stop")
-        .attr("offset", "100%")
-        .attr("stop-color", knowledgeColorScale(0));
+  // Animation loop
+  useEffect(() => {
+    const animate = () => {
+      draw();
+      animationRef.current = requestAnimationFrame(animate);
+    };
+    animate();
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [draw]);
 
-      legend.append("rect")
-        .attr("width", 20)
-        .attr("height", 80)
-        .attr("fill", "url(#knowledge-gradient)")
-        .attr("stroke", "#d1d5db")
-        .attr("rx", 3);
+  // Mouse interactions
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - translation.x, y: e.clientY - translation.y });
+  };
 
-      legend.append("text")
-        .attr("x", 25)
-        .attr("y", 5)
-        .attr("font-size", "11px")
-        .attr("font-weight", "500")
-        .text("Well known");
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
 
-      legend.append("text")
-        .attr("x", 25)
-        .attr("y", 45)
-        .attr("font-size", "11px")
-        .text("Learning");
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setMousePos({ x, y });
 
-      legend.append("text")
-        .attr("x", 25)
-        .attr("y", 80)
-        .attr("font-size", "11px")
-        .text("Unknown");
-    } else if (viewMode === "cefr") {
-      // CEFR level legend with better styling
-      ["A1", "A2", "B1", "B2", "C1", "C2"].forEach((level, i) => {
-        legend.append("circle")
-          .attr("cx", 10)
-          .attr("cy", i * 20 + 10)
-          .attr("r", 7)
-          .attr("fill", cefrColorScale(level))
-          .attr("stroke", "#9ca3af")
-          .attr("stroke-width", 1);
-
-        legend.append("text")
-          .attr("x", 25)
-          .attr("y", i * 20 + 14)
-          .attr("font-size", "11px")
-          .attr("font-weight", level === data.levelEstimate.cefrBand ? "600" : "400")
-          .attr("fill", level === data.levelEstimate.cefrBand ? "#1e40af" : "#4b5563")
-          .text(level);
+    if (isDragging) {
+      setTranslation({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y,
       });
     } else {
-      // Frequency legend
-      legend.append("circle")
-        .attr("cx", 10)
-        .attr("cy", 10)
-        .attr("r", 8)
-        .attr("fill", "#86efac")
-        .attr("stroke", "#22c55e")
-        .attr("stroke-width", 2);
+      // Check for hover
+      const dpr = window.devicePixelRatio || 1;
+      const canvasX = (x * dpr - rect.width * dpr / 2 - translation.x * dpr) / (scale * dpr);
+      const canvasY = (y * dpr - rect.height * dpr / 2 - translation.y * dpr) / (scale * dpr);
 
-      legend.append("text")
-        .attr("x", 25)
-        .attr("y", 14)
-        .attr("font-size", "11px")
-        .text("Studied");
+      let closestWord = null;
+      let closestDist = 20 / scale; // Detection radius
 
-      legend.append("circle")
-        .attr("cx", 10)
-        .attr("cy", 35)
-        .attr("r", 7)
-        .attr("fill", "#cbd5e1")
-        .attr("stroke", "#94a3b8")
-        .attr("stroke-width", 1);
+      points.forEach(point => {
+        const dist = Math.hypot(point.x - canvasX, point.y - canvasY);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestWord = point.word;
+        }
+      });
 
-      legend.append("text")
-        .attr("x", 25)
-        .attr("y", 39)
-        .attr("font-size", "11px")
-        .text("Not studied");
+      setHoveredWord(closestWord);
     }
+  };
 
-    // Add zoom controls
-    const controls = svg.append("g")
-      .attr("transform", `translate(20, ${height - 60})`);
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
 
-    const zoomIn = controls.append("g")
-      .style("cursor", "pointer")
-      .on("click", () => {
-        svg.transition().duration(300).call(zoom.scaleBy, 1.3);
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const scaleFactor = Math.exp(-e.deltaY * 0.001);
+    const newScale = Math.max(0.5, Math.min(12, scale * scaleFactor));
+    
+    // Zoom towards mouse position
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (rect) {
+      const x = e.clientX - rect.left - rect.width / 2;
+      const y = e.clientY - rect.top - rect.height / 2;
+      const k = newScale / scale;
+      setTranslation({
+        x: x + (translation.x - x) * k,
+        y: y + (translation.y - y) * k,
       });
+    }
+    
+    setScale(newScale);
+  };
 
-    zoomIn.append("rect")
-      .attr("width", 30)
-      .attr("height", 30)
-      .attr("fill", "white")
-      .attr("stroke", "#d1d5db")
-      .attr("rx", 5);
+  // Reset view
+  const resetView = () => {
+    setScale(2);
+    setTranslation({ x: 0, y: 0 });
+  };
 
-    zoomIn.append("text")
-      .attr("x", 15)
-      .attr("y", 20)
-      .attr("text-anchor", "middle")
-      .attr("font-size", "18px")
-      .attr("fill", "#4b5563")
-      .text("+");
+  // Reset to default knowledge levels
+  const resetLevels = () => {
+    setLevelControls({
+      A1: { level10: 100, level7: 0, level5: 0 },
+      A2: { level10: 100, level7: 0, level5: 0 },
+      B1: { level10: 14, level7: 70, level5: 10 },
+      B2: { level10: 5, level7: 20, level5: 0 },
+      C1: { level10: 0, level7: 0, level5: 0 },
+      C2: { level10: 0, level7: 0, level5: 0 },
+    });
+  };
 
-    const zoomOut = controls.append("g")
-      .attr("transform", "translate(35, 0)")
-      .style("cursor", "pointer")
-      .on("click", () => {
-        svg.transition().duration(300).call(zoom.scaleBy, 0.7);
-      });
+  // Zero all level 10s
+  const zeroAllTens = () => {
+    const newControls = { ...levelControls };
+    Object.keys(newControls).forEach(band => {
+      newControls[band as keyof typeof levelControls].level10 = 0;
+    });
+    setLevelControls(newControls);
+  };
 
-    zoomOut.append("rect")
-      .attr("width", 30)
-      .attr("height", 30)
-      .attr("fill", "white")
-      .attr("stroke", "#d1d5db")
-      .attr("rx", 5);
+  // Export as PNG
+  const exportPNG = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const link = document.createElement('a');
+      link.download = 'vocabulary_web.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+  };
 
-    zoomOut.append("text")
-      .attr("x", 15)
-      .attr("y", 20)
-      .attr("text-anchor", "middle")
-      .attr("font-size", "18px")
-      .attr("fill", "#4b5563")
-      .text("−");
-
-    const reset = controls.append("g")
-      .attr("transform", "translate(70, 0)")
-      .style("cursor", "pointer")
-      .on("click", () => {
-        svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
-      });
-
-    reset.append("rect")
-      .attr("width", 30)
-      .attr("height", 30)
-      .attr("fill", "white")
-      .attr("stroke", "#d1d5db")
-      .attr("rx", 5);
-
-    reset.append("text")
-      .attr("x", 15)
-      .attr("y", 20)
-      .attr("text-anchor", "middle")
-      .attr("font-size", "12px")
-      .attr("fill", "#4b5563")
-      .text("⟲");
-
-  }, [data, viewMode]);
+  // Calculate stats
+  const getStats = () => {
+    const counts = { 1: 0, 5: 0, 7: 0, 10: 0 };
+    points.forEach(p => {
+      counts[p.displayLevel as keyof typeof counts]++;
+    });
+    return counts;
+  };
 
   if (loading) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-center h-96">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        </CardContent>
-      </Card>
+      <div className="bg-[#0b0f14] rounded-lg p-8 flex items-center justify-center h-[600px]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#e8eef6]"></div>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Card>
-        <CardContent className="text-center text-red-600 p-8">
-          Error loading vocabulary data: {error}
-        </CardContent>
-      </Card>
+      <div className="bg-[#0b0f14] rounded-lg p-8 text-center text-red-400">
+        Error loading vocabulary data: {error}
+      </div>
     );
   }
 
+  const stats = getStats();
+
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle>Vocabulary Knowledge Web</CardTitle>
-        <div className="flex items-center justify-between mt-4">
-          <div className="text-sm text-gray-600 space-x-4">
-            <span>Level: <span className="font-semibold text-blue-600">{data?.levelEstimate.cefrBand}</span></span>
-            <span>Studied: <span className="font-semibold text-green-600">{data?.studiedCount}</span> words</span>
-            <span>Reviews: <span className="font-semibold text-purple-600">{data?.totalReviews}</span></span>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant={viewMode === "knowledge" ? "default" : "outline"}
-              onClick={() => setViewMode("knowledge")}
-              className="transition-all"
-            >
-              Knowledge
-            </Button>
-            <Button
-              size="sm"
-              variant={viewMode === "frequency" ? "default" : "outline"}
-              onClick={() => setViewMode("frequency")}
-              className="transition-all"
-            >
-              Frequency
-            </Button>
-            <Button
-              size="sm"
-              variant={viewMode === "cefr" ? "default" : "outline"}
-              onClick={() => setViewMode("cefr")}
-              className="transition-all"
-            >
-              CEFR Level
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="relative">
-          <svg ref={svgRef} className="w-full h-auto border-2 rounded-lg bg-gradient-to-br from-gray-50 to-gray-100"></svg>
+    <div className="bg-[#0b0f14] rounded-lg overflow-hidden" style={{ height: '800px' }}>
+      <div className="grid grid-cols-[380px_1fr] gap-4 h-full">
+        {/* Control Panel */}
+        <aside className="p-4 border-r border-white/5 overflow-auto bg-[#0b0f14]">
+          <h1 className="text-lg font-semibold text-[#e8eef6] mb-4">Vocabulary Web</h1>
           
-          {selectedWord && (
-            <div className="absolute top-4 left-4 bg-white p-5 rounded-lg shadow-xl max-w-sm border border-gray-200">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <h3 className="font-bold text-xl">{selectedWord.lemma}</h3>
-                  {selectedWord.pos && <p className="text-sm text-gray-500 italic">({selectedWord.pos})</p>}
-                </div>
+          <p className="text-xs text-[#e8eef6]/70 mb-4">
+            Your level: <span className="font-semibold text-blue-400">{data?.levelEstimate.cefrBand}</span> | 
+            Studied: <span className="font-semibold text-green-400">{data?.studiedCount}</span> words
+          </p>
+
+          {/* Display Controls */}
+          <div className="bg-[#0f1622] border border-white/5 rounded-xl p-3 mb-3">
+            <h2 className="text-sm font-medium text-[#e8eef6]/95 mb-3">Display</h2>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-[#e8eef6]/75">Point size: {pointSize.toFixed(1)}</label>
+                <Slider
+                  value={[pointSize]}
+                  onValueChange={([v]) => setPointSize(v)}
+                  min={1}
+                  max={5}
+                  step={0.1}
+                  className="mt-1"
+                />
+              </div>
+              <div className="flex gap-2 flex-wrap">
                 <Button
                   size="sm"
-                  variant="ghost"
-                  className="h-6 w-6 p-0"
-                  onClick={() => setSelectedWord(null)}
+                  variant="outline"
+                  onClick={resetLevels}
+                  className="bg-[#151b23] border-white/10 text-[#e8eef6] hover:border-white/20 text-xs"
                 >
-                  ✕
+                  Reset defaults
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={zeroAllTens}
+                  className="bg-[#151b23] border-white/10 text-[#e8eef6] hover:border-white/20 text-xs"
+                >
+                  Zero all 10s
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={resetView}
+                  className="bg-[#151b23] border-white/10 text-[#e8eef6] hover:border-white/20 text-xs"
+                >
+                  Recenter
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={exportPNG}
+                  className="bg-[#151b23] border-white/10 text-[#e8eef6] hover:border-white/20 text-xs"
+                >
+                  Export PNG
                 </Button>
               </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">CEFR Level:</span>
-                  <span className="font-semibold">{selectedWord.cefr}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Frequency Rank:</span>
-                  <span className="font-semibold">#{selectedWord.freqRank}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Knowledge Score:</span>
-                  <span className="font-semibold text-green-600">{(selectedWord.knowledgeScore * 100).toFixed(0)}%</span>
-                </div>
-                {selectedWord.studied && (
-                  <>
-                    <hr className="my-2" />
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Reviews:</span>
-                      <span className="font-semibold">{selectedWord.reps}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Stability:</span>
-                      <span className="font-semibold">{selectedWord.stability.toFixed(1)} days</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Difficulty:</span>
-                      <span className="font-semibold">{(selectedWord.difficulty * 100).toFixed(0)}%</span>
-                    </div>
-                    {selectedWord.lapses > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Lapses:</span>
-                        <span className="font-semibold text-orange-600">{selectedWord.lapses}</span>
-                      </div>
-                    )}
-                    {selectedWord.due && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Next Review:</span>
-                        <span className="font-semibold text-blue-600">
-                          {new Date(selectedWord.due).toLocaleDateString()}
-                        </span>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
             </div>
-          )}
+          </div>
 
-          {/* Hover tooltip */}
-          {hoveredWord && !selectedWord && (
-            <div className="absolute bottom-4 left-4 bg-black bg-opacity-80 text-white px-3 py-2 rounded-lg text-sm pointer-events-none">
-              Click to see details
+          {/* CEFR Band Controls */}
+          {(['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as const).map(band => {
+            const controls = levelControls[band];
+            const level1 = Math.max(0, 100 - controls.level10 - controls.level7 - controls.level5);
+            
+            return (
+              <div key={band} className="bg-[#0f1622] border border-white/5 rounded-xl p-3 mb-3">
+                <h2 className="text-sm font-medium text-[#e8eef6]/95 mb-2">{band}</h2>
+                <div className="space-y-2">
+                  <div className="grid grid-cols-[44px_1fr_50px] gap-2 items-center">
+                    <span className="text-xs text-[#a50026]">10</span>
+                    <Slider
+                      value={[controls.level10]}
+                      onValueChange={([v]) => updateLevelControl(band, 'level10', v)}
+                      max={100}
+                      className="flex-1"
+                    />
+                    <span className="text-xs text-[#e8eef6]/90">{controls.level10}%</span>
+                  </div>
+                  <div className="grid grid-cols-[44px_1fr_50px] gap-2 items-center">
+                    <span className="text-xs text-[#fdae61]">7</span>
+                    <Slider
+                      value={[controls.level7]}
+                      onValueChange={([v]) => updateLevelControl(band, 'level7', v)}
+                      max={100}
+                      className="flex-1"
+                    />
+                    <span className="text-xs text-[#e8eef6]/90">{controls.level7}%</span>
+                  </div>
+                  <div className="grid grid-cols-[44px_1fr_50px] gap-2 items-center">
+                    <span className="text-xs text-[#fee08b]">5</span>
+                    <Slider
+                      value={[controls.level5]}
+                      onValueChange={([v]) => updateLevelControl(band, 'level5', v)}
+                      max={100}
+                      className="flex-1"
+                    />
+                    <span className="text-xs text-[#e8eef6]/90">{controls.level5}%</span>
+                  </div>
+                  <div className="grid grid-cols-[44px_1fr_50px] gap-2 items-center">
+                    <span className="text-xs text-[#4575b4]">1</span>
+                    <div className="text-xs text-[#e8eef6]/50 text-center">auto</div>
+                    <span className="text-xs text-[#e8eef6]/90">{level1}%</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Legend */}
+          <div className="flex gap-3 flex-wrap items-center mt-4">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS.level10 }}></div>
+              <span className="text-xs text-[#e8eef6]">10</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS.level7 }}></div>
+              <span className="text-xs text-[#e8eef6]">7</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS.level5 }}></div>
+              <span className="text-xs text-[#e8eef6]">5</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS.level1 }}></div>
+              <span className="text-xs text-[#e8eef6]">1</span>
+            </div>
+          </div>
+
+          <p className="text-xs text-[#e8eef6]/60 mt-4">
+            Hover for details. Drag to pan, scroll to zoom.
+          </p>
+          
+          <p className="text-xs text-[#e8eef6]/60 mt-2">
+            Counts — 10: {stats[10]} · 7: {stats[7]} · 5: {stats[5]} · 1: {stats[1]}
+          </p>
+        </aside>
+
+        {/* Canvas */}
+        <div className="relative" ref={containerRef}>
+          <canvas
+            ref={canvasRef}
+            className="w-full h-full cursor-move"
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onWheel={handleWheel}
+          />
+          
+          {/* Tooltip */}
+          {hoveredWord && (
+            <div
+              className="absolute pointer-events-none bg-[#0d121a]/90 border border-white/10 px-2 py-1 rounded-lg text-xs text-[#e8eef6] whitespace-nowrap"
+              style={{
+                left: mousePos.x,
+                top: mousePos.y - 30,
+                transform: 'translateX(-50%)',
+              }}
+            >
+              {hoveredWord.lemma} · {hoveredWord.cefr} · {hoveredWord.knowledgeLevel}
             </div>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
