@@ -2,24 +2,42 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface Lexeme {
+  id: string;
   lemma: string;
-  pos: string;
-  level: string;
-  rank: number;
+  pos: string | null;
+  cefr: string;
+  freqRank: number;
   px: number;
   py: number;
   conf: number;
 }
 
-interface ConfidencePercentages {
-  [key: string]: {
-    [key: number]: number;
-  };
+interface LexemeState {
+  userId: string;
+  lexemeId: string;
+  due: Date;
+  stability: number;
+  difficulty: number;
+  reps: number;
+  lapses: number;
+  lastReview: Date | null;
+  suspended: boolean;
+}
+
+interface Review {
+  id: string;
+  userId: string;
+  lexemeId: string;
+  cardId: string;
+  rating: number; // 1 again, 2 hard, 3 good, 4 easy
+  reviewedAt: Date;
+  stability: number;
+  difficulty: number;
+  elapsedDays: number;
 }
 
 export default function VocabularyWeb() {
@@ -33,31 +51,8 @@ export default function VocabularyWeb() {
   const [pointSize, setPointSize] = useState(2.4);
   const [tooltip, setTooltip] = useState({ show: false, text: '', x: 0, y: 0 });
   const [stats, setStats] = useState({ 1: 0, 5: 0, 7: 0, 10: 0 });
-
-  // Confidence percentages for each CEFR level
-  const [confidencePct, setConfidencePct] = useState<ConfidencePercentages>({
-    A1: { 10: 100, 7: 0, 5: 0 },
-    A2: { 10: 100, 7: 0, 5: 0 },
-    B1: { 10: 14, 7: 70, 5: 10 },
-    B2: { 10: 5, 7: 20, 5: 0 },
-    C1: { 10: 0, 7: 0, 5: 0 },
-    C2: { 10: 0, 7: 0, 5: 0 },
-  });
-
-  // Sample data - replace with actual data from your app
-  const sampleData: Lexeme[] = [
-    { lemma: 'привет', pos: 'noun', level: 'A1', rank: 1000, px: 0, py: 0, conf: 1 },
-    { lemma: 'дом', pos: 'noun', level: 'A1', rank: 900, px: 0, py: 0, conf: 1 },
-    { lemma: 'читать', pos: 'verb', level: 'B1', rank: 800, px: 0, py: 0, conf: 1 },
-    { lemma: 'путешествовать', pos: 'verb', level: 'B2', rank: 3500, px: 0, py: 0, conf: 1 },
-    { lemma: 'свобода', pos: 'noun', level: 'B2', rank: 4200, px: 0, py: 0, conf: 1 },
-    { lemma: 'сосредоточиться', pos: 'verb', level: 'C1', rank: 6200, px: 0, py: 0, conf: 1 },
-    { lemma: 'непревзойдённый', pos: 'adj', level: 'C2', rank: 9000, px: 0, py: 0, conf: 1 },
-    { lemma: 'мир', pos: 'noun', level: 'A1', rank: 700, px: 0, py: 0, conf: 1 },
-    { lemma: 'работать', pos: 'verb', level: 'A2', rank: 1200, px: 0, py: 0, conf: 1 },
-    { lemma: 'договор', pos: 'noun', level: 'B1', rank: 2100, px: 0, py: 0, conf: 1 },
-    { lemma: 'обусловливать', pos: 'verb', level: 'C1', rank: 7500, px: 0, py: 0, conf: 1 },
-  ];
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Layout function using golden angle spiral
   const layout = useCallback(() => {
@@ -74,68 +69,86 @@ export default function VocabularyWeb() {
     setPoints(newPoints);
   }, [points]);
 
-  // Deterministic sampling functions
-  const h32 = (s: string) => {
-    let h = 2166136261 >>> 0;
-    for (let i = 0; i < s.length; i++) {
-      h ^= s.charCodeAt(i);
-      h = Math.imul(h, 16777619);
+  // Calculate confidence based on study performance
+  const calculateConfidence = useCallback((lexemeState: LexemeState | null, reviews: Review[]): number => {
+    if (!lexemeState) {
+      return 1; // Never studied
     }
-    return h >>> 0;
-  };
 
-  const applyConfidence = useCallback(() => {
-    // Reset all points to confidence 1
-    const newPoints = points.map(p => ({ ...p, conf: 1 }));
+    if (lexemeState.suspended) {
+      return 1; // Suspended words
+    }
+
+    // Base confidence on stability and difficulty
+    let baseConfidence = lexemeState.stability * 0.6 + (1 - lexemeState.difficulty) * 0.4;
     
-    // Group by CEFR level
-    const groups: { [key: string]: Lexeme[] } = { A1: [], A2: [], B1: [], B2: [], C1: [], C2: [] };
-    newPoints.forEach(p => {
-      if (groups[p.level]) groups[p.level].push(p);
-    });
+    // Adjust based on recent performance
+    const recentReviews = reviews
+      .filter(r => r.lexemeId === lexemeState.lexemeId)
+      .sort((a, b) => new Date(b.reviewedAt).getTime() - new Date(a.reviewedAt).getTime())
+      .slice(0, 5); // Last 5 reviews
 
-    // Apply confidence based on percentages
-    Object.entries(groups).forEach(([level, levelPoints]) => {
-      const pct = confidencePct[level];
-      if (!pct || !levelPoints.length) return;
+    if (recentReviews.length > 0) {
+      const avgRating = recentReviews.reduce((sum, r) => sum + r.rating, 0) / recentReviews.length;
+      const ratingBonus = (avgRating - 2.5) * 0.2; // -0.3 to +0.3
+      baseConfidence += ratingBonus;
+    }
 
-      const n = levelPoints.length;
-      const c10 = Math.max(0, Math.min(n, Math.round(n * (pct[10] || 0) / 100)));
-      const c7 = Math.max(0, Math.min(n, Math.round(n * (pct[7] || 0) / 100)));
-      const c5 = Math.max(0, Math.min(n, Math.round(n * (pct[5] || 0) / 100)));
+    // Penalize for lapses
+    const lapsePenalty = Math.min(lexemeState.lapses * 0.1, 0.3);
+    baseConfidence -= lapsePenalty;
 
-      const taken = new Set<Lexeme>();
+    // Normalize to 0-1 range
+    baseConfidence = Math.max(0, Math.min(1, baseConfidence));
+
+    // Convert to confidence levels (1, 5, 7, 10)
+    if (baseConfidence >= 0.8) return 10;
+    if (baseConfidence >= 0.6) return 7;
+    if (baseConfidence >= 0.4) return 5;
+    return 1;
+  }, []);
+
+  // Fetch user's lexeme data
+  const fetchUserData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fetch all lexemes with their states and reviews
+      const response = await fetch('/api/vocabulary-web/data');
+      if (!response.ok) {
+        throw new Error('Failed to fetch vocabulary data');
+      }
+
+      const data = await response.json();
       
-      // Select points for each confidence level
-      const selectFor = (count: number, conf: number, tag: string) => {
-        if (count <= 0) return;
-        const ordered = levelPoints
-          .map(p => ({ p, k: h32(p.lemma + '|' + tag) }))
-          .sort((a, b) => a.k - b.k);
+      // Calculate confidence for each lexeme
+      const lexemesWithConfidence = data.lexemes.map((lexeme: any) => {
+        const lexemeState = data.lexemeStates.find((ls: LexemeState) => ls.lexemeId === lexeme.id);
+        const lexemeReviews = data.reviews.filter((r: Review) => r.lexemeId === lexeme.id);
+        const conf = calculateConfidence(lexemeState, lexemeReviews);
         
-        let picked = 0;
-        for (const item of ordered) {
-          if (picked >= count) break;
-          if (!taken.has(item.p)) {
-            taken.add(item.p);
-            item.p.conf = conf;
-            picked++;
-          }
-        }
-      };
+        return {
+          ...lexeme,
+          px: 0,
+          py: 0,
+          conf
+        };
+      });
 
-      selectFor(c10, 10, '10');
-      selectFor(c7, 7, '7');
-      selectFor(c5, 5, '5');
-    });
-
-    setPoints(newPoints);
-    
-    // Update stats
-    const newStats = { 1: 0, 5: 0, 7: 0, 10: 0 };
-    newPoints.forEach(p => newStats[p.conf as keyof typeof newStats]++);
-    setStats(newStats);
-  }, [points, confidencePct]);
+      setPoints(lexemesWithConfidence);
+      
+      // Update stats
+      const newStats = { 1: 0, 5: 0, 7: 0, 10: 0 };
+      lexemesWithConfidence.forEach((p: Lexeme) => newStats[p.conf as keyof typeof newStats]++);
+      setStats(newStats);
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  }, [calculateConfidence]);
 
   // Draw function
   const draw = useCallback(() => {
@@ -172,7 +185,7 @@ export default function VocabularyWeb() {
     points.forEach(p => {
       const sx = p.px * scale + W/2 + tx;
       const sy = p.py * scale + H/2 + ty;
-      const r = (pointSize + Math.max(0, 6 - Math.log2(1 + p.rank/200))) * 0.7;
+      const r = (pointSize + Math.max(0, 6 - Math.log2(1 + p.freqRank/200))) * 0.7;
       
       ctx.beginPath();
       ctx.fillStyle = p.conf === 10 ? '#a50026' : p.conf === 7 ? '#fdae61' : p.conf === 5 ? '#fee08b' : '#4575b4';
@@ -215,9 +228,13 @@ export default function VocabularyWeb() {
       });
 
       if (best) {
+        const bestLexeme = best as Lexeme;
+        const confidenceText = bestLexeme.conf === 10 ? 'Mastered' : 
+                              bestLexeme.conf === 7 ? 'Well Known' : 
+                              bestLexeme.conf === 5 ? 'Familiar' : 'Learning';
         setTooltip({
           show: true,
-          text: `${(best as Lexeme).lemma} · ${(best as Lexeme).level} · ${(best as Lexeme).conf}`,
+          text: `${bestLexeme.lemma} · ${bestLexeme.cefr} · ${confidenceText}`,
           x: e.clientX,
           y: e.clientY
         });
@@ -244,13 +261,6 @@ export default function VocabularyWeb() {
     }
   };
 
-  // Handle confidence slider changes
-  const handleConfidenceChange = (level: string, conf: number, value: number[]) => {
-    const newPct = { ...confidencePct };
-    newPct[level][conf] = value[0];
-    setConfidencePct(newPct);
-  };
-
   // Reset view
   const resetView = () => {
     setTx(0);
@@ -271,16 +281,12 @@ export default function VocabularyWeb() {
 
   // Initialize
   useEffect(() => {
-    setPoints(sampleData);
-  }, []);
+    fetchUserData();
+  }, [fetchUserData]);
 
   useEffect(() => {
     layout();
   }, [layout]);
-
-  useEffect(() => {
-    applyConfidence();
-  }, [applyConfidence]);
 
   useEffect(() => {
     draw();
@@ -292,6 +298,40 @@ export default function VocabularyWeb() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [draw]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0b0f14] text-[#e8eef6] flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p>Loading your vocabulary data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-[#0b0f14] text-[#e8eef6] flex items-center justify-center">
+        <Card className="w-full max-w-md bg-[#0f1622] border-white/6">
+          <CardHeader>
+            <CardTitle className="text-red-400">Error Loading Data</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-4">{error}</p>
+            <div className="flex gap-2">
+              <Button onClick={fetchUserData} variant="outline">
+                Try Again
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/">Back to Home</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0b0f14] text-[#e8eef6]">
@@ -307,133 +347,100 @@ export default function VocabularyWeb() {
       
       <div className="p-4">
         <div className="grid grid-cols-[380px_1fr] gap-4 h-[calc(100vh-120px)]">
-        {/* Sidebar */}
-        <aside className="p-4 border-r border-white/6 overflow-auto">
-          <h1 className="text-lg mb-2">Vocabulary Web</h1>
-          <p className="text-xs opacity-80 mb-4">
-            Each dot represents a lexeme. Color indicates confidence level.
-          </p>
+          {/* Sidebar */}
+          <aside className="p-4 border-r border-white/6 overflow-auto">
+            <h1 className="text-lg mb-2">Your Vocabulary Progress</h1>
+            <p className="text-xs opacity-80 mb-4">
+              Each dot represents a word. Color indicates your confidence level based on your study performance.
+            </p>
 
-          {/* Display Controls */}
-          <div className="bg-[#0f1622] border border-white/6 rounded-xl p-3 mb-3">
-            <h2 className="text-sm mb-2">Display</h2>
-            <div className="grid grid-cols-[1fr_auto] gap-2 items-center mb-3">
-              <div>
-                <label className="text-xs opacity-75">Point size</label>
-                <Slider
-                  value={[pointSize]}
-                  onValueChange={(value) => setPointSize(value[0])}
-                  min={1}
-                  max={5}
-                  step={0.1}
-                  className="w-full"
-                />
+            {/* Display Controls */}
+            <div className="bg-[#0f1622] border border-white/6 rounded-xl p-3 mb-3">
+              <h2 className="text-sm mb-2">Display</h2>
+              <div className="grid grid-cols-[1fr_auto] gap-2 items-center mb-3">
+                <div>
+                  <label className="text-xs opacity-75">Point size</label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    step="0.1"
+                    value={pointSize}
+                    onChange={(e) => setPointSize(parseFloat(e.target.value))}
+                    className="w-full"
+                  />
+                </div>
+                <span className="text-xs">{pointSize.toFixed(1)}</span>
               </div>
-              <span className="text-xs">{pointSize.toFixed(1)}</span>
+              <div className="flex gap-2 flex-wrap">
+                <Button size="sm" variant="outline" onClick={resetView}>
+                  Recenter
+                </Button>
+                <Button size="sm" variant="outline" onClick={exportPNG}>
+                  Export PNG
+                </Button>
+              </div>
             </div>
-            <div className="flex gap-2 flex-wrap">
-              <Button size="sm" variant="outline" onClick={resetView}>
-                Recenter
-              </Button>
-              <Button size="sm" variant="outline" onClick={exportPNG}>
-                Export PNG
-              </Button>
-            </div>
-          </div>
 
-          {/* CEFR Level Controls */}
-          {['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map(level => (
-            <div key={level} className="bg-[#0f1622] border border-white/6 rounded-xl p-3 mb-3">
-              <h2 className="text-sm mb-2">{level}</h2>
+            {/* Confidence Legend */}
+            <div className="bg-[#0f1622] border border-white/6 rounded-xl p-3 mb-3">
+              <h2 className="text-sm mb-2">Confidence Levels</h2>
               <div className="space-y-2">
-                <div className="grid grid-cols-[44px_1fr_50px] gap-2 items-center">
-                  <span className="text-xs text-[#a50026]">10</span>
-                  <Slider
-                    value={[confidencePct[level][10] || 0]}
-                    onValueChange={(value) => handleConfidenceChange(level, 10, value)}
-                    min={0}
-                    max={100}
-                    className="w-full"
-                  />
-                  <span className="text-xs">{confidencePct[level][10] || 0}%</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#a50026]"></div>
+                  <span className="text-xs">Mastered (10)</span>
+                  <span className="text-xs opacity-70 ml-auto">{stats[10]}</span>
                 </div>
-                <div className="grid grid-cols-[44px_1fr_50px] gap-2 items-center">
-                  <span className="text-xs text-[#fdae61]">7</span>
-                  <Slider
-                    value={[confidencePct[level][7] || 0]}
-                    onValueChange={(value) => handleConfidenceChange(level, 7, value)}
-                    min={0}
-                    max={100}
-                    className="w-full"
-                  />
-                  <span className="text-xs">{confidencePct[level][7] || 0}%</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#fdae61]"></div>
+                  <span className="text-xs">Well Known (7)</span>
+                  <span className="text-xs opacity-70 ml-auto">{stats[7]}</span>
                 </div>
-                <div className="grid grid-cols-[44px_1fr_50px] gap-2 items-center">
-                  <span className="text-xs text-[#fee08b]">5</span>
-                  <Slider
-                    value={[confidencePct[level][5] || 0]}
-                    onValueChange={(value) => handleConfidenceChange(level, 5, value)}
-                    min={0}
-                    max={100}
-                    className="w-full"
-                  />
-                  <span className="text-xs">{confidencePct[level][5] || 0}%</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#fee08b]"></div>
+                  <span className="text-xs">Familiar (5)</span>
+                  <span className="text-xs opacity-70 ml-auto">{stats[5]}</span>
                 </div>
-                <div className="grid grid-cols-[44px_1fr_50px] gap-2 items-center">
-                  <span className="text-xs text-[#4575b4]">1</span>
-                  <div className="text-xs opacity-70">auto</div>
-                  <span className="text-xs">
-                    {100 - ((confidencePct[level][10] || 0) + (confidencePct[level][7] || 0) + (confidencePct[level][5] || 0))}%
-                  </span>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#4575b4]"></div>
+                  <span className="text-xs">Learning (1)</span>
+                  <span className="text-xs opacity-70 ml-auto">{stats[1]}</span>
                 </div>
               </div>
             </div>
-          ))}
 
-          {/* Legend */}
-          <div className="flex gap-2 flex-wrap mb-3">
-            <div className="w-3 h-3 rounded-full bg-[#a50026]"></div>
-            <span className="text-xs">10</span>
-            <div className="w-3 h-3 rounded-full bg-[#fdae61]"></div>
-            <span className="text-xs">7</span>
-            <div className="w-3 h-3 rounded-full bg-[#fee08b]"></div>
-            <span className="text-xs">5</span>
-            <div className="w-3 h-3 rounded-full bg-[#4575b4]"></div>
-            <span className="text-xs">1</span>
+            <p className="text-xs opacity-70 mb-2">
+              Hover a dot for details. Drag to pan, scroll to zoom.
+            </p>
+            <p className="text-xs opacity-70">
+              Total words: {points.length}
+            </p>
+          </aside>
+
+          {/* Canvas */}
+          <div className="relative">
+            <canvas
+              ref={canvasRef}
+              className="w-full h-full block cursor-grab active:cursor-grabbing"
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onWheel={handleWheel}
+            />
+            
+            {/* Tooltip */}
+            {tooltip.show && (
+              <div
+                className="fixed pointer-events-none bg-[rgba(13,18,26,0.9)] border border-white/12 px-2 py-1 rounded-lg text-xs transform -translate-x-1/2 -translate-y-full whitespace-nowrap z-50"
+                style={{ left: tooltip.x, top: tooltip.y }}
+              >
+                {tooltip.text}
+              </div>
+            )}
           </div>
-
-          <p className="text-xs opacity-70 mb-2">
-            Hover a dot for details. Drag to pan, scroll to zoom.
-          </p>
-          <p className="text-xs opacity-70">
-            Counts — 10: {stats[10]} · 7: {stats[7]} · 5: {stats[5]} · 1: {stats[1]}
-          </p>
-        </aside>
-
-        {/* Canvas */}
-        <div className="relative">
-          <canvas
-            ref={canvasRef}
-            className="w-full h-full block cursor-grab active:cursor-grabbing"
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            onWheel={handleWheel}
-          />
-          
-          {/* Tooltip */}
-          {tooltip.show && (
-            <div
-              className="fixed pointer-events-none bg-[rgba(13,18,26,0.9)] border border-white/12 px-2 py-1 rounded-lg text-xs transform -translate-x-1/2 -translate-y-full whitespace-nowrap z-50"
-              style={{ left: tooltip.x, top: tooltip.y }}
-            >
-              {tooltip.text}
-            </div>
-                     )}
-         </div>
-       </div>
-     </div>
-   </div>
+        </div>
+      </div>
+    </div>
   );
 }
