@@ -63,3 +63,55 @@ export const LexemeSchema = z.object({
 });
 
 export type LexemeData = z.infer<typeof LexemeSchema>;
+
+export const AssessmentStartResponse = z.object({
+	sessionId: z.string(),
+	stage: z.enum(['yesno', 'cat']),
+	items: z.array(z.object({
+		id: z.string(),
+		type: z.enum(['yesno_real', 'yesno_pseudo', 'mc4', 'recall']),
+		lexemeId: z.string().optional(),
+		lemma: z.string().optional(),
+		pseudoword: z.string().optional(),
+		g: z.number(),
+		b: z.number().optional()
+	}))
+});
+
+export const AssessmentAnswerRequest = z.object({
+	sessionId: z.string(),
+	itemId: z.string(),
+	y: z.union([z.literal(0), z.literal(1)])
+});
+
+export const AssessmentAnswerResponse = z.object({
+	continue: z.boolean(),
+	stage: z.enum(['yesno', 'cat', 'done']),
+	nextItem: z.object({
+		id: z.string(),
+		type: z.enum(['yesno_real', 'yesno_pseudo', 'mc4', 'recall']),
+		lexemeId: z.string().optional(),
+		pseudoword: z.string().optional(),
+		g: z.number(),
+		b: z.number().optional()
+	}).nullable()
+});
+
+export const AssessmentResultResponse = z.object({
+	sessionId: z.string(),
+	theta: z.number(),
+	SE: z.number(),
+	vocabSize: z.number().optional(),
+	coverageByZipf: z.array(z.object({ zipf: z.number(), coverage: z.number() })),
+	perWord: z.object({
+		page: z.number(),
+		pageSize: z.number(),
+		total: z.number(),
+		items: z.array(z.object({
+			lexemeId: z.string(),
+			p: z.number(),
+			ci68: z.tuple([z.number(), z.number()]),
+			ci95: z.tuple([z.number(), z.number()])
+		}))
+	})
+});
