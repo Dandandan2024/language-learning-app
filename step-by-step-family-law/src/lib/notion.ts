@@ -51,7 +51,8 @@ export async function listDatabaseItems(databaseId: string) {
   const pages: any[] = []
   let cursor: string | undefined = undefined
   while (true) {
-    const res: any = await notion.databases.query({ database_id: id, start_cursor: cursor })
+    const client: any = notion as any
+    const res: any = await client.databases.query({ database_id: id, start_cursor: cursor })
     pages.push(...res.results)
     if (!res.has_more || !res.next_cursor) break
     cursor = res.next_cursor
@@ -130,7 +131,7 @@ export async function fetchChildPages(rootPageId: string) {
     }
     if (block.has_children) {
       try {
-        const nested = await notion.blocks.children.list({ block_id: block.id, page_size: 100 })
+        const nested = await (notion as any).blocks.children.list({ block_id: block.id, page_size: 100 })
         for (const b of nested.results as any[]) {
           if (b.type === 'child_page') {
             childPages.push({ id: b.id, title: b.child_page?.title || 'Untitled' })
