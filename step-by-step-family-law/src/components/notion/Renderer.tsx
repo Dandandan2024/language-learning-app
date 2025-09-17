@@ -45,6 +45,33 @@ function Children({ blocks }: { blocks?: any[] }) {
   )
 }
 
+function DBItems({ items }: { items?: any[] }) {
+  if (!items || items.length === 0) return null
+  return (
+    <div className="my-4 border rounded p-3">
+      <h4 className="text-sm font-semibold text-gray-800 mb-2">Database Items</h4>
+      <ul className="list-disc list-inside space-y-1">
+        {items.map((p) => (
+          <li key={p.id} className="text-sm">
+            {p.properties ? (
+              <>
+                {/* Try title property */}
+                {(() => {
+                  const titleProp = Object.values(p.properties).find((x: any) => x?.type === 'title') as any
+                  const title = titleProp?.title?.map((t: any) => t.plain_text).join('')
+                  return <span>{title || p.id}</span>
+                })()}
+              </>
+            ) : (
+              <span>{p.id}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function Block({ block }: { block: any }) {
   const { id, type } = block
   const data = block[type]
@@ -163,8 +190,61 @@ function Block({ block }: { block: any }) {
           <Children blocks={block.children} />
         </div>
       )
+    case 'table':
+      return (
+        <table className="w-full border-collapse border border-gray-300 my-4">
+          <tbody>
+            <Children blocks={block.children} />
+          </tbody>
+        </table>
+      )
+    case 'table_row':
+      return (
+        <tr>
+          {(data?.cells || []).map((cell: any[], idx: number) => (
+            <td key={idx} className="border border-gray-300 px-3 py-2">
+              <RichText text={cell} />
+            </td>
+          ))}
+        </tr>
+      )
+    case 'bookmark':
+      return (
+        <div className="my-3">
+          <a className="text-blue-600 underline break-all" href={data?.url} target="_blank" rel="noreferrer">
+            {data?.url}
+          </a>
+          {data?.caption?.length > 0 && (
+            <div className="text-sm text-gray-600">
+              <RichText text={data.caption} />
+            </div>
+          )}
+        </div>
+      )
+    case 'table_of_contents':
+      return (
+        <div className="my-4 p-3 border rounded bg-gray-50 text-sm">
+          <em>Table of contents is not auto-generated here.</em>
+        </div>
+      )
+    case 'link_to_page':
+      return (
+        <div className="my-2 text-sm text-blue-700">
+          Linked page
+        </div>
+      )
+    case 'synced_block':
+      return (
+        <div className="my-2">
+          <Children blocks={block.children} />
+        </div>
+      )
+    case 'child_database':
+      return <DBItems items={block.database_items} />
     default:
-      return null
+      return (
+        <div className="my-2 text-xs text-gray-400">Unsupported block: {type}</div>
+      )
   }
 }
 

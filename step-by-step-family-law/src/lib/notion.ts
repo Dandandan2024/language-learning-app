@@ -33,8 +33,30 @@ export async function listChildren(blockId: string) {
 }
 
 export async function fetchPageBlocks(pageOrBlockId: string) {
-  // Kept for compatibility: non-recursive
   return listChildren(pageOrBlockId)
+}
+
+export async function fetchSyncedBlockChildren(block: any): Promise<NotionBlock[]> {
+  // When synced_from is present, we need to fetch children from the referenced block id
+  const from = block?.synced_block?.synced_from
+  if (from?.block_id) {
+    return listChildren(from.block_id)
+  }
+  // Otherwise, children are local
+  return listChildren(block.id)
+}
+
+export async function listDatabaseItems(databaseId: string) {
+  const id = normalizeNotionId(databaseId)
+  const pages: any[] = []
+  let cursor: string | undefined = undefined
+  while (true) {
+    const res: any = await notion.databases.query({ database_id: id, start_cursor: cursor })
+    pages.push(...res.results)
+    if (!res.has_more || !res.next_cursor) break
+    cursor = res.next_cursor
+  }
+  return pages
 }
 
 export async function fetchPageTree(pageOrBlockId: string): Promise<NotionBlock[]> {
@@ -43,12 +65,38 @@ export async function fetchPageTree(pageOrBlockId: string): Promise<NotionBlock[
 
   for (const block of rootBlocks) {
     const enriched = { ...block } as any
-    if (block.has_children) {
-      // Recursively fetch children
-      enriched.children = await fetchPageTree(block.id)
+
+    // Expand synced blocks
+    if (block.type === 'synced_block') {
+      try {
+        enriched.children = await fetchSyncedBlockChildren(block)
+      } catch {
+        enriched.children = []
+      }
+      result.push(enriched)
+      continue
     }
 
-    // Some composite types reference external content; we just pass through
+    // Expand child_database by listing items (pages)
+    if (block.type === 'child_database') {
+      try {
+        const items = await listDatabaseItems(block.id)
+        enriched.database_items = items
+      } catch {
+        enriched.database_items = []
+      }
+      result.push(enriched)
+      continue
+    }
+
+    if (block.has_children) {
+      try {
+        enriched.children = await fetchPageTree(block.id)
+      } catch {
+        enriched.children = []
+      }
+    }
+
     result.push(enriched)
   }
 
@@ -69,6 +117,16 @@ export async function fetchChildPages(rootPageId: string) {
   for (const block of children) {
     if (block.type === 'child_page') {
       childPages.push({ id: block.id, title: block.child_page?.title || 'Untitled' })
+    }
+    if (block.type === 'child_database') {
+      try {
+        const items = await listDatabaseItems(block.id)
+        for (const page of items) {
+          childPages.push({ id: page.id, title: extractTitleFromPage(page) })
+        }
+      } catch {
+        // ignore
+      }
     }
     if (block.has_children) {
       try {
