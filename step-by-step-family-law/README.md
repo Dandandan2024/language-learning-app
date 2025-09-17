@@ -26,17 +26,49 @@ src/
 │   ├── layout.tsx         # Root layout
 │   ├── globals.css        # Global styles
 │   ├── guides/            # Step-by-step guides
+│   │   └── parenting-consent-orders/  # Notion-backed guide (example)
 │   ├── tools/             # Interactive tools
 │   ├── resources/         # Support resources
 │   ├── about/             # About page
 │   └── admin/             # Admin tools
 ├── components/            # Reusable components
+│   ├── notion/           # Notion renderer
 │   ├── ui/               # UI components
 │   └── layout/           # Layout components
 └── lib/                  # Utility functions
 ```
 
-## 🛠️ Content Migration from Notion
+## 🧩 Notion Integration
+
+This project can render live content from Notion pages.
+
+### 1) Create a Notion Integration
+- Go to `https://www.notion.so/my-integrations`
+- Create a new internal integration
+- Copy the secret (starts with `secret_...`)
+
+### 2) Share the Page with the Integration
+- Open your Notion page (e.g., the Parenting Consent Orders guide)
+- Click Share → Invite → select your integration → Invite
+
+### 3) Configure Environment Variable
+- Locally:
+  ```bash
+  echo "NOTION_TOKEN=secret_xxx" >> .env.local
+  ```
+- On Vercel: Project → Settings → Environment Variables
+  - Key: `NOTION_TOKEN`
+  - Value: your Notion integration secret
+  - Target: Production + Preview
+
+### 4) Example Guide
+- Route: `/guides/parenting-consent-orders`
+- Page ID used: `23d711874f8b4a928a2a6bee5667b35d`
+- Update `src/app/guides/parenting-consent-orders/page.tsx` with your page ID as needed
+
+## 🛠️ Content Migration from Notion (manual export also supported)
+
+You can also export from Notion and upload via `/admin/migrate`.
 
 ### Step 1: Export from Notion
 
@@ -118,17 +150,10 @@ The website uses a blue and green color scheme. To customize:
 - 🔄 Mobile app
 - 🔄 Advanced calculators
 
-## 🚀 Deployment
+## 📈 Deployment
 
-### Vercel (Recommended)
-1. Push code to GitHub
-2. Connect to Vercel
-3. Deploy automatically
-
-### Other Platforms
-- Netlify
-- AWS
-- DigitalOcean
+- Vercel: import repo and deploy
+- Add `NOTION_TOKEN` in Vercel env for Notion-backed pages
 
 ## 📊 Analytics
 
