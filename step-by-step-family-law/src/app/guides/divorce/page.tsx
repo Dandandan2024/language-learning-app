@@ -60,7 +60,7 @@ const steps = [
               <h5 className="font-medium text-gray-700 mb-2">Identity Documents</h5>
               <ul className="space-y-1 text-sm text-gray-600">
                 <li>• Birth certificate or passport</li>
-                <li>• Driver's license or photo ID</li>
+                <li>• Driver&apos;s license or photo ID</li>
                 <li>• Marriage certificate</li>
               </ul>
             </div>
