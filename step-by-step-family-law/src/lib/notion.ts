@@ -37,3 +37,38 @@ export async function fetchPageMeta(pageId: string) {
   const page = await notion.pages.retrieve({ page_id: id }) as any
   return page
 }
+
+export async function fetchChildPages(rootPageId: string) {
+  const root = normalizeNotionId(rootPageId)
+  const children = await fetchPageBlocks(root)
+  const childPages: { id: string; title: string }[] = []
+
+  for (const block of children) {
+    if (block.type === 'child_page') {
+      childPages.push({ id: block.id, title: block.child_page?.title || 'Untitled' })
+    }
+    // Some roots may have toggles/columns with nested children
+    if (block.has_children) {
+      try {
+        const nested = await notion.blocks.children.list({ block_id: block.id, page_size: 100 })
+        for (const b of nested.results as any[]) {
+          if (b.type === 'child_page') {
+            childPages.push({ id: b.id, title: b.child_page?.title || 'Untitled' })
+          }
+        }
+      } catch {
+        // ignore nested fetch errors
+      }
+    }
+  }
+
+  return childPages
+}
+
+export function extractTitleFromPage(page: any): string {
+  // Tries properties.title then fallback
+  const props = page?.properties || {}
+  const titleProp = Object.values(props).find((p: any) => p?.type === 'title') as any
+  const title = titleProp?.title?.map((t: any) => t.plain_text).join('')
+  return title || 'Untitled'
+}
