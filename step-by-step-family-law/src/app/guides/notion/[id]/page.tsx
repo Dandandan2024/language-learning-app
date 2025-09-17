@@ -1,11 +1,12 @@
 import Renderer from '@/components/notion/Renderer'
-import { fetchPageBlocks, normalizeNotionId } from '@/lib/notion'
+import { fetchPageTree, normalizeNotionId } from '@/lib/notion'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 300
 
 export default async function NotionDynamicPage({ params }: { params: { id: string } }) {
   const id = normalizeNotionId(params.id)
-  const blocks = await fetchPageBlocks(id)
+  const blocks = await fetchPageTree(id)
 
   return (
     <div className="min-h-screen bg-white">

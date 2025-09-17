@@ -1,16 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import Renderer from '@/components/notion/Renderer'
-import { fetchPageBlocks } from '@/lib/notion'
+import { fetchPageTree } from '@/lib/notion'
 
 const NOTION_PAGE_ID = '23d711874f8b4a928a2a6bee5667b35d'
 
 export const dynamic = 'force-static'
+export const revalidate = 300
 
 export default async function ParentingConsentOrdersPage() {
   let blocks: any[] = []
   let error: string | null = null
   try {
-    blocks = await fetchPageBlocks(NOTION_PAGE_ID)
+    blocks = await fetchPageTree(NOTION_PAGE_ID)
   } catch (e: any) {
     error = e?.message || 'Failed to load content'
   }
