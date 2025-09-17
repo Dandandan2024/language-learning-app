@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import Renderer from '@/components/notion/Renderer'
 import { fetchPageBlocks } from '@/lib/notion'
 
