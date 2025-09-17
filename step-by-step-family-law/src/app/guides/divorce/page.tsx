@@ -219,7 +219,7 @@ const steps = [
             <div>
               <h5 className="font-medium text-gray-700 mb-2">Postal Service</h5>
               <p className="text-sm text-gray-600">
-                Send by registered post to your spouse's last known address.
+                Send by registered post to your spouse&apos;s last known address.
               </p>
             </div>
           </div>

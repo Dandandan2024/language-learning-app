@@ -1,5 +1,5 @@
-import Link from 'next/link'
-import { Phone, MapPin, Clock, ExternalLink, Shield, Users, FileText, AlertTriangle } from 'lucide-react'
+// import Link from 'next/link'
+import { Phone, ExternalLink, Shield, Users, FileText, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
 const emergencyResources = [
@@ -39,7 +39,7 @@ const legalAidServices = [
   },
   {
     name: 'Victoria Legal Aid',
-    description: 'Free legal help for Victorians who can\'t afford a lawyer',
+    description: 'Free legal help for Victorians who can&apos;t afford a lawyer',
     phone: '1300 792 387',
     website: 'https://www.legalaid.vic.gov.au',
     coverage: 'VIC',
@@ -97,12 +97,12 @@ const communityResources = [
   },
   {
     name: 'Community Legal Centres',
-    description: 'Free legal advice and assistance for people who can\'t afford a lawyer',
+    description: 'Free legal advice and assistance for people who can&apos;t afford a lawyer',
     phone: '1800 677 402',
     website: 'https://www.naclc.org.au',
   },
   {
-    name: 'Women\'s Legal Services',
+    name: 'Women&apos;s Legal Services',
     description: 'Specialized legal services for women experiencing family violence',
     phone: '1800 639 784',
     website: 'https://www.wlsa.org.au',
@@ -189,7 +189,7 @@ export default function ResourcesPage() {
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-gray-900">Emergency Resources</h2>
             <p className="mt-4 text-lg text-gray-600">
-              If you're in immediate danger or need urgent help, contact these services right away.
+              If you&apos;re in immediate danger or need urgent help, contact these services right away.
             </p>
           </div>
           
@@ -252,7 +252,7 @@ export default function ResourcesPage() {
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900">Legal Aid Services by State</h2>
             <p className="mt-4 text-lg text-gray-600">
-              Free legal services for people who can't afford a lawyer
+              Free legal services for people who can&apos;t afford a lawyer
             </p>
           </div>
           
@@ -441,7 +441,7 @@ export default function ResourcesPage() {
           <div className="text-center">
             <h2 className="text-3xl font-bold text-white">Need More Help?</h2>
             <p className="mt-4 text-lg text-blue-100">
-              If you can't find what you're looking for, our community and support team are here to help.
+              If you can&apos;t find what you&apos;re looking for, our community and support team are here to help.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
               <Button size="lg" variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100">

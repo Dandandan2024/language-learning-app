@@ -1,4 +1,4 @@
-import { Scale, Users, Shield, Clock, CheckCircle } from 'lucide-react'
+import { Scale, Users, Shield, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
 const values = [
@@ -67,7 +67,7 @@ export default function AboutPage() {
               About Step by Step Family Law
             </h1>
             <p className="mx-auto mt-4 max-w-3xl text-lg text-gray-600">
-              We're on a mission to make family law accessible, understandable, and manageable for every Australian.
+              We&apos;re on a mission to make family law accessible, understandable, and manageable for every Australian.
             </p>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import Link from 'next/link'
+// import Link from 'next/link'
 import { ArrowRight, CheckCircle, Users, BookOpen, Calculator, Shield } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
@@ -177,7 +177,7 @@ export default function HomePage() {
                   <p className="ml-2 text-sm text-gray-600">Verified User</p>
                 </div>
                 <blockquote className="mt-4">
-                  <p className="text-gray-900">"{testimonial.content}"</p>
+                  <p className="text-gray-900">&ldquo;{testimonial.content}&rdquo;</p>
                 </blockquote>
                 <div className="mt-4">
                   <p className="text-sm font-semibold text-gray-900">{testimonial.author}</p>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Calculator, DollarSign, AlertCircle, CheckCircle, Download } from 'lucide-react'
+import { Calculator, AlertCircle, CheckCircle, Download } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
 interface CostBreakdown {
@@ -151,14 +151,14 @@ For legal advice, consult a qualified legal professional.`
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Partner's Annual Income (before tax)
+                  Partner&apos;s Annual Income (before tax)
                 </label>
                 <input
                   type="number"
                   value={partnerIncome}
                   onChange={(e) => setPartnerIncome(e.target.value)}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder="Enter partner's income (optional)"
+                  placeholder="Enter partner&apos;s income (optional)"
                 />
               </div>
 
@@ -294,7 +294,7 @@ For legal advice, consult a qualified legal professional.`
                   <ul className="space-y-1 text-sm text-green-800">
                     <li>• Consider mediation before going to court</li>
                     <li>• Use our step-by-step guides to reduce lawyer hours</li>
-                    <li>• Check if you're eligible for legal aid</li>
+                    <li>• Check if you&apos;re eligible for legal aid</li>
                     <li>• Prepare documents yourself using our templates</li>
                   </ul>
                 </div>
