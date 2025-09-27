@@ -11,99 +11,67 @@ datasource db {
 }
 
 model User {
-  id            String         @id @default(cuid())
-  email         String         @unique
-  name          String?
-  createdAt     DateTime       @default(now())
-  settings      Json?
-  levelEstimate LevelEstimate?
-  reviews       Review[]
-  lexemeStates  LexemeState[]
-  cards         Card[]
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bookings Booking[]
+
+  @@map("users")
 }
 
-model Lexeme {
-  id           String        @id @default(cuid())
-  lemma        String
-  pos          String?
-  freqRank     Int
-  cefr         String        // A1..C2 seed label
-  forms        String[]      // optional inflections
-  notes        String?
-  sentences    Sentence[]
-  cards        Card[]
-  lexemeStates LexemeState[]
-
-  @@index([freqRank])
-  @@index([cefr])
-}
-
-model Sentence {
-  id             String   @id @default(cuid())
-  targetLexemeId String
-  textL2         String
-  textL1         String   // translation
-  cefr           String
-  difficulty     Float    // 0..1 scaled
-  tokens         String[] // optional tokenizer output
-  source         String   // "llm" | "seed"
-  targetForm     String?
-  createdAt      DateTime @default(now())
-  uniqueHash     String   @unique
-  lexeme         Lexeme   @relation(fields: [targetLexemeId], references: [id])
-  cards          Card[]
-}
-
-model Card {
-  id             String   @id @default(cuid())
-  userId         String
-  sentenceId     String
-  targetLexemeId String
-  createdAt      DateTime @default(now())
-  user           User     @relation(fields: [userId], references: [id])
-  sentence       Sentence @relation(fields: [sentenceId], references: [id])
-  lexeme         Lexeme   @relation(fields: [targetLexemeId], references: [id])
-  reviews        Review[]
-}
-
-model Review {
+model Session {
   id          String   @id @default(cuid())
-  userId      String
-  lexemeId    String
-  cardId      String
-  rating      Int      // 1 again, 2 hard, 3 good, 4 easy
-  reviewedAt  DateTime @default(now())
-  stability   Float    // snapshot BEFORE update
-  difficulty  Float
-  elapsedDays Int
-  user        User     @relation(fields: [userId], references: [id])
-  card        Card     @relation(fields: [cardId], references: [id])
+  title       String
+  description String?
+  date        DateTime
+  startTime   String   // HH:MM format
+  endTime     String   // HH:MM format
+  capacity    Int      @default(1)
+  price       Float
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  @@index([userId, reviewedAt])
+  bookings Booking[]
+
+  @@map("sessions")
 }
 
-model LexemeState {
-  userId     String
-  lexemeId   String
-  due        DateTime
-  stability  Float
-  difficulty Float
-  reps       Int
-  lapses     Int
-  lastReview DateTime?
-  suspended  Boolean  @default(false)
-  user       User     @relation(fields: [userId], references: [id])
-  lexeme     Lexeme   @relation(fields: [lexemeId], references: [id])
+model Booking {
+  id            String   @id @default(cuid())
+  sessionId     String
+  userId        String
+  stripePaymentId String?
+  status        BookingStatus @default(PENDING)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  @@id([userId, lexemeId])
-  @@index([due])
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@map("bookings")
 }
 
-model LevelEstimate {
-  userId     String   @id
-  cefrBand   String   // A1..C2
-  vocabIndex Float    // 0..10
-  confidence Float    // 0..1
-  updatedAt  DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id])
+model Admin {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("admins")
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
 }

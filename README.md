@@ -1,241 +1,172 @@
-# Language Learning App
+# Sauna Cult Booking System
 
-A modern web application for language learning using spaced repetition and comprehensible input. Built with Next.js, Prisma, and TypeScript.
+A modern, user-friendly web application for booking sauna sessions with integrated payments and admin management.
 
 ## Features
 
-- **Adaptive Placement Test**: Determines user's vocabulary level using binary search algorithm
-- **FSRS Scheduling**: Implements spaced repetition with Free Spaced Repetition Scheduler
-- **Comprehensible Input**: Sentences target one new word while keeping others at user's level
-- **Beautiful UI**: Modern interface built with Tailwind CSS and shadcn/ui
-- **Authentication**: Secure login with NextAuth (email magic links + Google OAuth)
-- **Real-time Progress**: Track learning progress and statistics
+### Customer Features
+- 🏠 **Beautiful Homepage** - Modern, responsive design with clear session display
+- 📅 **Easy Booking** - Simple date selection and session booking
+- 💳 **Secure Payments** - Integrated Stripe payment processing
+- ✅ **Instant Confirmation** - Real-time booking confirmation with payment success
+- 📱 **Mobile Responsive** - Works perfectly on all devices
 
-## Architecture
+### Admin Features
+- 🔐 **Secure Authentication** - Admin login with JWT tokens
+- 📊 **Dashboard** - Overview of bookings, revenue, and sessions
+- 📅 **Session Management** - Create, edit, and manage sauna sessions
+- 👥 **Booking Management** - View and manage all customer bookings
+- 💰 **Revenue Tracking** - Monitor earnings and booking statistics
 
-### Monorepo Structure
-```
-apps/
-  web/        # Next.js frontend application
-  worker/     # Background job processor (planned)
-packages/
-  core/       # Shared algorithms (FSRS, placement, types)
-infra/
-  prisma/     # Database schema and migrations
-```
+## Tech Stack
 
-### Tech Stack
-- **Frontend**: Next.js 15, React 18, TypeScript
-- **Styling**: Tailwind CSS, shadcn/ui components
-- **Backend**: Next.js API routes, Prisma ORM
-- **Database**: PostgreSQL (recommended: Neon)
-- **Authentication**: NextAuth.js
-- **Testing**: Jest (for core algorithms)
+- **Frontend**: Next.js 14, React 18, TypeScript, Tailwind CSS
+- **Backend**: Next.js API Routes, Prisma ORM
+- **Database**: PostgreSQL
+- **Payments**: Stripe
+- **Authentication**: JWT tokens with bcrypt
+- **UI Components**: Headless UI, Heroicons, Lucide React
 
 ## Quick Start
 
-### Prerequisites
-- Node.js 18+ 
-- PostgreSQL database (or Neon account)
-- Git
+### 1. Install Dependencies
 
-### 1. Clone and Setup
 ```bash
-git clone <repository-url>
-cd language-learning-app
 npm install
 ```
 
-### 2. Environment Configuration
-Create `apps/web/.env.local`:
+### 2. Environment Setup
+
+Copy the example environment file:
+
+```bash
+cp .env.example .env.local
+```
+
+Update `.env.local` with your configuration:
+
 ```env
 # Database
-DATABASE_URL="postgresql://username:password@localhost:5432/language_app"
+DATABASE_URL="postgresql://username:password@localhost:5432/sauna_cult"
 
-# NextAuth
-NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="your-secret-key-here-generate-with-openssl-rand-base64-32"
+# Stripe (get from https://stripe.com)
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_SECRET_KEY=sk_test_...
 
-# Google OAuth (optional)
-GOOGLE_CLIENT_ID="your-google-client-id"
-GOOGLE_CLIENT_SECRET="your-google-client-secret"
+# JWT Secret (generate a random string)
+JWT_SECRET=your-super-secret-jwt-key
 
-# OpenAI API (for future LLM integration)
-OPENAI_API_KEY="your-openai-api-key"
+# Admin Credentials
+ADMIN_EMAIL=admin@saunacult.com
+ADMIN_PASSWORD=secure-admin-password
 ```
 
 ### 3. Database Setup
+
+Generate Prisma client and run migrations:
+
 ```bash
-# Generate Prisma client
-npm run db:generate
-
-# Create and apply migrations
-npm run db:migrate
-
-# Seed database with sample Russian lexemes
-cd infra/prisma
-npm run db:seed
-cd ../..
+npx prisma generate
+npx prisma db push
 ```
 
-### 4. Run Development Server
+### 4. Initialize Database
+
+Run the setup script to create admin user and sample sessions:
+
+```bash
+npx tsx scripts/setup.ts
+```
+
+### 5. Start Development Server
+
 ```bash
 npm run dev
 ```
 
-Visit [http://localhost:3000](http://localhost:3000) to see the app!
+Visit `http://localhost:3000` to see the booking system in action!
 
-## How It Works
+## Admin Access
 
-### Adaptive Placement (8-12 items)
-1. Starts at ~B1 level (theta = 0)
-2. Shows sentence targeting a lexeme at current difficulty
-3. User rates: Easy (+step) or Hard (-step)
-4. Step size halves every 2 responses
-5. Stops when convergence reached or 12 items completed
-6. Maps final theta to CEFR level and vocab index
+- **URL**: `http://localhost:3000/admin`
+- **Default Email**: `admin@saunacult.com`
+- **Default Password**: `admin123`
 
-### Study Loop with FSRS
-1. Pulls next due lexeme based on FSRS scheduling
-2. Shows sentence with target word highlighted
-3. User reveals translation then rates recall (1-4)
-4. Updates stability/difficulty and schedules next review
-5. Prefetches content for upcoming reviews
+*Change these credentials in your `.env.local` file for production!*
 
-### Core Algorithms
+## Stripe Setup
 
-**FSRS-lite Implementation:**
-```typescript
-// Initial state: stability=0.5, difficulty=5.0
-// Rating multipliers: again=0.5, hard=0.9, good=1.6, easy=2.2
-// Interval = max(1, round(stability^1.07)) days
-```
-
-**Placement Algorithm:**
-```typescript
-// Binary search with halving step sizes
-// theta ∈ [-3,+3] maps to CEFR A1-C2
-// vocabIndex = 10 * sigmoid(theta)
-```
+1. Create a Stripe account at [stripe.com](https://stripe.com)
+2. Get your API keys from the Stripe Dashboard
+3. Add them to your `.env.local` file
+4. For production, use live keys instead of test keys
 
 ## Database Schema
 
-### Core Models
-- **User**: Authentication and settings
-- **Lexeme**: Vocabulary items with frequency ranks and CEFR levels
-- **Sentence**: L2/L1 sentence pairs targeting specific lexemes
-- **LexemeState**: Per-user FSRS state (stability, difficulty, due date)
-- **Review**: Historical review records for analytics
-- **Card**: Links users to specific sentence-lexeme combinations
+The application uses the following main entities:
 
-### Key Relationships
-- Users have many LexemeStates (their learning progress)
-- Lexemes have many Sentences (different contexts)
-- Reviews track all user interactions for analytics
+- **Users**: Customer information (email, name, phone)
+- **Sessions**: Sauna session details (date, time, price, capacity)
+- **Bookings**: Customer bookings with payment status
+- **Admins**: Admin users for system management
 
 ## API Endpoints
 
-### Placement
-- `GET /api/placement/next` - Get next placement item
-- `POST /api/placement/answer` - Submit easy/hard rating
+### Public Endpoints
+- `GET /api/sessions` - Get available sessions for a date
+- `POST /api/bookings` - Create a new booking
+- `GET /api/bookings/[id]` - Get booking details
 
-### Study
-- `GET /api/study/next` - Get next due card
-- `POST /api/study/review` - Submit review rating (1-4)
-
-### Generation (Future)
-- `POST /api/generate` - Request LLM sentence generation
-
-## Testing
-
-Run core algorithm tests:
-```bash
-cd packages/core
-npm test
-```
-
-Tests cover:
-- FSRS state transitions and monotonic growth
-- Placement convergence and CEFR mapping
-- Schema validation with Zod
+### Admin Endpoints
+- `POST /api/admin/login` - Admin authentication
+- `GET /api/admin/verify` - Verify admin token
+- `GET /api/admin/stats` - Get dashboard statistics
+- `GET /api/admin/sessions` - Get all sessions
+- `POST /api/admin/sessions` - Create new session
+- `PATCH /api/admin/sessions/[id]` - Update session
+- `DELETE /api/admin/sessions/[id]` - Delete session
+- `GET /api/admin/bookings` - Get all bookings
+- `PATCH /api/admin/bookings/[id]` - Update booking status
 
 ## Deployment
 
-### Database (Neon)
-1. Create account at [neon.tech](https://neon.tech)
-2. Create new project and database
-3. Copy connection string to `DATABASE_URL`
+### Vercel (Recommended)
 
-### Web App (Vercel)
-1. Connect GitHub repository to Vercel
-2. Set environment variables in Vercel dashboard
-3. Deploy automatically on push
+1. Push your code to GitHub
+2. Connect your repository to Vercel
+3. Add environment variables in Vercel dashboard
+4. Deploy!
 
-### Background Worker (Railway) - Planned
-Future implementation will add:
-- LLM sentence generation queue
-- Prefetching for upcoming reviews
-- Content validation and filtering
+### Other Platforms
 
-## Development
+The app can be deployed to any platform that supports Next.js:
+- Netlify
+- Railway
+- DigitalOcean App Platform
+- AWS Amplify
 
-### Workspace Commands
-```bash
-npm run dev          # Start web app
-npm run build        # Build for production
-npm run db:generate  # Generate Prisma client
-npm run db:migrate   # Run database migrations
-npm run db:studio    # Open Prisma Studio
-```
+Make sure to set up a PostgreSQL database and configure all environment variables.
 
-### Project Structure
-```
-├── apps/web/src/
-│   ├── app/                 # Next.js App Router
-│   ├── components/          # React components
-│   ├── lib/                 # Utilities and config
-│   └── styles/             # Global styles
-├── packages/core/src/
-│   ├── fsrs.ts             # Spaced repetition algorithm
-│   ├── placement.ts        # Adaptive placement logic
-│   ├── schemas.ts          # Zod validation schemas
-│   └── types.ts            # TypeScript definitions
-└── infra/prisma/
-    ├── schema.prisma       # Database schema
-    └── seed.ts             # Sample data
-```
+## Customization
 
-## Contributing
+### Styling
+- Modify `tailwind.config.js` to change colors and theme
+- Update `app/globals.css` for custom styles
+- Brand colors are defined in the `sauna` color palette
 
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open Pull Request
+### Features
+- Add email notifications in `lib/email.ts`
+- Extend booking with additional fields in the Prisma schema
+- Add more payment methods by extending Stripe integration
 
-## Roadmap
+## Support
 
-### MVP Complete ✅
-- [x] Monorepo setup with Next.js and Prisma
-- [x] FSRS-lite scheduling algorithm with tests
-- [x] Adaptive placement algorithm with tests  
-- [x] NextAuth authentication
-- [x] Placement and study API endpoints
-- [x] Modern UI with placement wizard and study interface
-- [x] Russian language seed data
-
-### Planned Features
-- [ ] Background worker for LLM sentence generation
-- [ ] Advanced analytics dashboard
-- [ ] Multiple language support
-- [ ] Audio/TTS integration
-- [ ] Mobile app (React Native)
-- [ ] Social features and leaderboards
+For issues and questions:
+1. Check the console for error messages
+2. Verify all environment variables are set correctly
+3. Ensure database is properly connected
+4. Check Stripe keys are valid and have proper permissions
 
 ## License
 
-MIT License - see LICENSE file for details.
-
----
-
-**Happy Learning!** 🚀📚
+MIT License - feel free to use this project for your own sauna business!
