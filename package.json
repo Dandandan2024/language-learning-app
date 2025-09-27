@@ -12,7 +12,8 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "setup:database": "node setup-database.js"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
