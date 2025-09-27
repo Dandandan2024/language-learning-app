@@ -9,7 +9,7 @@ import {
   getDifficultyForTheta,
   PlacementItem 
 } from "@/lib/core";
-import { generateSentence } from "@/lib/openai";
+// import { generateSentence } from "@/lib/openai"; // Not needed with fallback approach
 
 export async function GET(request: NextRequest) {
   try {
@@ -95,14 +95,43 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Generate a sentence using OpenAI
-    const generatedSentence = await generateSentence({
-      lexeme: selectedWord.lemma,
-      pos: selectedWord.pos,
-      cefr: difficulty.cefr,
-      targetLanguage: userLanguage,
-      nativeLanguage: nativeLanguage
-    });
+    // Try to find an existing sentence for this lexeme, or use a fallback
+    let sentence;
+    try {
+      // First try to find an existing lexeme and sentence in the database
+      const existingLexeme = await prisma.lexeme.findFirst({
+        where: { lemma: selectedWord.lemma },
+        include: { sentences: true }
+      });
+
+      if (existingLexeme && existingLexeme.sentences.length > 0) {
+        // Use existing sentence
+        const existingSentence = existingLexeme.sentences[0];
+        sentence = {
+          textL2: existingSentence.textL2,
+          textL1: existingSentence.textL1,
+          cefr: existingSentence.cefr,
+          targetForm: existingSentence.targetForm || selectedWord.lemma
+        };
+      } else {
+        // Fallback: create a simple sentence manually
+        sentence = {
+          textL2: `This is a sentence with the word "${selectedWord.lemma}".`,
+          textL1: `This is a sentence with the word "${selectedWord.lemma}".`,
+          cefr: selectedWord.cefr,
+          targetForm: selectedWord.lemma
+        };
+      }
+    } catch (error) {
+      console.error("Error finding sentence:", error);
+      // Ultimate fallback
+      sentence = {
+        textL2: `This is a sentence with the word "${selectedWord.lemma}".`,
+        textL1: `This is a sentence with the word "${selectedWord.lemma}".`,
+        cefr: selectedWord.cefr,
+        targetForm: selectedWord.lemma
+      };
+    }
 
     // Create a temporary lexeme ID for the placement (we don't need to store this)
     const tempLexemeId = `placement-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -110,10 +139,10 @@ export async function GET(request: NextRequest) {
     const response: PlacementItem = {
       lexemeId: tempLexemeId,
       sentence: {
-        textL2: generatedSentence.sentence_l2,
-        textL1: generatedSentence.sentence_l1,
-        cefr: generatedSentence.cefr,
-        targetForm: generatedSentence.target_form
+        textL2: sentence.textL2,
+        textL1: sentence.textL1,
+        cefr: sentence.cefr,
+        targetForm: sentence.targetForm
       },
       meta: {
         idx: placementState.n + 1,
